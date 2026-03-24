@@ -2569,6 +2569,8 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     const { createProviderProfile } = await import('../dist/config/provider-profiles.js');
     const templateRoot = await mkdtemp(join(tmpdir(), 'f127-active-template-'));
     await writeFile(join(templateRoot, 'cat-template.json'), '{}', 'utf-8');
+    const savedGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+    process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = templateRoot;
     const boundProfile = await createProviderProfile(templateRoot, {
       provider: 'openai',
       name: 'template-bound-openai',
@@ -2618,6 +2620,8 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     } finally {
       if (previousTemplatePath === undefined) delete process.env.CAT_TEMPLATE_PATH;
       else process.env.CAT_TEMPLATE_PATH = previousTemplatePath;
+      if (savedGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = savedGlobalRoot;
       catRegistry.reset();
       for (const [id, config] of Object.entries(registrySnapshot)) {
         catRegistry.register(id, config);
@@ -2639,7 +2643,7 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     await mkdir(isolatedApiDir, { recursive: true });
     await writeFile(join(isolatedRepoRoot, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n', 'utf-8');
 
-    const prevGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+    const savedGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
     process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = staleTemplateRoot;
     await createProviderProfile(staleTemplateRoot, {
       provider: 'openai',
@@ -2648,7 +2652,7 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       authType: 'api_key',
       protocol: 'openai',
       apiKey: 'sk-stale-openai',
-      setActive: true,
+      setActive: false,
     });
     // Switch global root to the isolated repo so the stale profile is invisible
     process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = isolatedRepoRoot;
@@ -2666,6 +2670,7 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     const previousCwd = process.cwd();
     try {
       process.chdir(isolatedApiDir);
+      process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = isolatedRepoRoot;
       process.env.CAT_TEMPLATE_PATH = join(staleTemplateRoot, 'missing-template.json');
       await collect(
         invokeSingleCat(deps, {
@@ -2679,10 +2684,10 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       );
     } finally {
       process.chdir(previousCwd);
+      if (savedGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = savedGlobalRoot;
       if (previousTemplatePath === undefined) delete process.env.CAT_TEMPLATE_PATH;
       else process.env.CAT_TEMPLATE_PATH = previousTemplatePath;
-      if (prevGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
-      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = prevGlobalRoot;
       await rm(staleTemplateRoot, { recursive: true, force: true });
       await rm(isolatedRepoRoot, { recursive: true, force: true });
     }
@@ -2704,6 +2709,10 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     const templateRaw = await readFile(join(process.cwd(), '..', '..', 'cat-template.json'), 'utf-8');
     await writeFile(join(root, 'cat-template.json'), templateRaw, 'utf-8');
     const prevGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+    process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = root;
+
+    // Isolate provider profiles to temp dir — prevents polluting real ~/.cat-cafe
+    const savedGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
     process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = root;
 
     const activatedProfile = await createProviderProfile(root, {
@@ -2755,6 +2764,8 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       );
     } finally {
       process.chdir(previousCwd);
+      if (savedGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = savedGlobalRoot;
       catRegistry.reset();
       for (const [id, config] of Object.entries(registrySnapshot)) {
         catRegistry.register(id, config);
@@ -2777,6 +2788,10 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     const apiDir = join(root, 'packages', 'api');
     await mkdir(apiDir, { recursive: true });
     await writeFile(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n', 'utf-8');
+
+    // Isolate provider profiles to temp dir — prevents polluting real ~/.cat-cafe
+    const savedGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+    process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = root;
 
     await createProviderProfile(root, {
       provider: 'openai',
@@ -2837,6 +2852,8 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       );
     } finally {
       process.chdir(previousCwd);
+      if (savedGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = savedGlobalRoot;
       catRegistry.reset();
       for (const [id, config] of Object.entries(registrySnapshot)) {
         catRegistry.register(id, config);
@@ -2926,12 +2943,30 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
   });
 
   it('F127 P1: keeps env-based codex auth untouched when no openai profile is explicitly configured', async () => {
+    const { loadCatConfig, toAllCatConfigs } = await import('../dist/config/cat-config-loader.js');
     const root = await mkdtemp(join(tmpdir(), 'f127-openai-env-auth-'));
     const apiDir = join(root, 'packages', 'api');
     await mkdir(apiDir, { recursive: true });
     await writeFile(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n', 'utf-8');
-    const prevGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+    const savedGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
     process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = root;
+    const registrySnapshot = catRegistry.getAllConfigs();
+    const baselineConfigs = toAllCatConfigs(loadCatConfig(join(process.cwd(), '..', '..', 'cat-template.json')));
+    const baselineCodexConfig = baselineConfigs.codex;
+    assert.ok(baselineCodexConfig, 'codex config should exist in baseline catalog');
+    const {
+      accountRef: _ignoredAccountRef,
+      providerProfileId: _ignoredProviderProfileId,
+      ...sanitizedCodexConfig
+    } = baselineCodexConfig;
+    catRegistry.reset();
+    for (const [id, config] of Object.entries(registrySnapshot)) {
+      if (id === 'codex') {
+        catRegistry.register(id, sanitizedCodexConfig);
+      } else {
+        catRegistry.register(id, config);
+      }
+    }
 
     const optionsSeen = [];
     const service = {
@@ -2957,8 +2992,12 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       );
     } finally {
       process.chdir(previousCwd);
-      if (prevGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
-      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = prevGlobalRoot;
+      if (savedGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = savedGlobalRoot;
+      catRegistry.reset();
+      for (const [id, config] of Object.entries(registrySnapshot)) {
+        catRegistry.register(id, config);
+      }
       await rm(root, { recursive: true, force: true });
     }
 
@@ -2975,6 +3014,9 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     const apiDir = join(root, 'packages', 'api');
     await mkdir(apiDir, { recursive: true });
     await writeFile(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n', 'utf-8');
+
+    const savedGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+    process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = root;
 
     const boundProfile = await createProviderProfile(root, {
       provider: 'openai',
@@ -3030,6 +3072,8 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       );
     } finally {
       process.chdir(previousCwd);
+      if (savedGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = savedGlobalRoot;
       catRegistry.reset();
       for (const [id, config] of Object.entries(registrySnapshot)) {
         catRegistry.register(id, config);
@@ -3044,6 +3088,9 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     const apiDir = join(root, 'packages', 'api');
     await mkdir(apiDir, { recursive: true });
     await writeFile(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n', 'utf-8');
+
+    const savedGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+    process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = root;
 
     const openrouterProfile = await createProviderProfile(root, {
       provider: 'openai',
@@ -3094,6 +3141,8 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       assert.ok(messages.some((m) => m.type === 'done'));
     } finally {
       process.chdir(previousCwd);
+      if (savedGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = savedGlobalRoot;
       catRegistry.reset();
       for (const [id, config] of Object.entries(registrySnapshot)) {
         catRegistry.register(id, config);
@@ -3114,6 +3163,19 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     const apiDir = join(root, 'packages', 'api');
     await mkdir(apiDir, { recursive: true });
     await writeFile(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n', 'utf-8');
+
+    const savedGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+    process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = root;
+
+    // Strip catalog-assigned providerProfileId/accountRef so the test's
+    // bootstrap binding is used instead of the builtin OAuth profile.
+    const originalOpusConfig = catRegistry.tryGet('opus')?.config;
+    if (originalOpusConfig) {
+      const { providerProfileId: _pp, accountRef: _ar, ...cleanConfig } = originalOpusConfig;
+      catRegistry.entries.delete('opus');
+      catRegistry.register('opus', cleanConfig);
+    }
+
     await createProviderProfile(root, {
       provider: 'anthropic',
       name: 'sponsor-gateway',
@@ -3221,6 +3283,12 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       process.chdir(previousCwd);
       if (previousProxyEnabled === undefined) delete process.env.ANTHROPIC_PROXY_ENABLED;
       else process.env.ANTHROPIC_PROXY_ENABLED = previousProxyEnabled;
+      if (savedGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = savedGlobalRoot;
+      if (originalOpusConfig) {
+        catRegistry.entries.delete('opus');
+        catRegistry.register('opus', originalOpusConfig);
+      }
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -3240,6 +3308,19 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     const apiDir = join(root, 'packages', 'api');
     await mkdir(apiDir, { recursive: true });
     await writeFile(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n', 'utf-8');
+
+    const savedGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+    process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = root;
+
+    // Strip catalog-assigned providerProfileId/accountRef so the test's
+    // bootstrap binding is used instead of the builtin OAuth profile.
+    const originalOpusConfig = catRegistry.tryGet('opus')?.config;
+    if (originalOpusConfig) {
+      const { providerProfileId: _pp, accountRef: _ar, ...cleanConfig } = originalOpusConfig;
+      catRegistry.entries.delete('opus');
+      catRegistry.register('opus', cleanConfig);
+    }
+
     await createProviderProfile(root, {
       provider: 'anthropic',
       name: 'sponsor-gateway',
@@ -3347,6 +3428,12 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       process.chdir(previousCwd);
       if (previousProxyEnabled === undefined) delete process.env.ANTHROPIC_PROXY_ENABLED;
       else process.env.ANTHROPIC_PROXY_ENABLED = previousProxyEnabled;
+      if (savedGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = savedGlobalRoot;
+      if (originalOpusConfig) {
+        catRegistry.entries.delete('opus');
+        catRegistry.register('opus', originalOpusConfig);
+      }
       _clearTestStrategyOverrides();
       await rm(root, { recursive: true, force: true });
     }
@@ -3367,6 +3454,19 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     const apiDir = join(root, 'packages', 'api');
     await mkdir(apiDir, { recursive: true });
     await writeFile(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n', 'utf-8');
+
+    const savedGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+    process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = root;
+
+    // Strip catalog-assigned providerProfileId/accountRef so the test's
+    // bootstrap binding is used instead of the builtin OAuth profile.
+    const originalOpusConfig = catRegistry.tryGet('opus')?.config;
+    if (originalOpusConfig) {
+      const { providerProfileId: _pp, accountRef: _ar, ...cleanConfig } = originalOpusConfig;
+      catRegistry.entries.delete('opus');
+      catRegistry.register('opus', cleanConfig);
+    }
+
     await createProviderProfile(root, {
       provider: 'anthropic',
       name: 'sponsor-gateway',
@@ -3460,6 +3560,12 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       process.chdir(previousCwd);
       if (previousProxyEnabled === undefined) delete process.env.ANTHROPIC_PROXY_ENABLED;
       else process.env.ANTHROPIC_PROXY_ENABLED = previousProxyEnabled;
+      if (savedGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = savedGlobalRoot;
+      if (originalOpusConfig) {
+        catRegistry.entries.delete('opus');
+        catRegistry.register('opus', originalOpusConfig);
+      }
       _clearTestStrategyOverrides();
       await rm(root, { recursive: true, force: true });
     }
