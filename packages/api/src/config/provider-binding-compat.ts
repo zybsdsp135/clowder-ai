@@ -51,11 +51,16 @@ export function validateModelFormatForProvider(
   _defaultModel?: string | null,
   profileKind?: ProviderProfileKind,
   ocProviderName?: string | null,
+  options?: { legacyCompat?: boolean },
 ): string | null {
   if (provider !== 'opencode') return null;
   if (profileKind === 'api_key') {
     const trimmedOcProvider = ocProviderName?.trim();
     if (!trimmedOcProvider) {
+      // Legacy compat: existing opencode+api_key members created before F189
+      // may not have ocProviderName. Allow edits to pass through — the invoke
+      // path skips the F189 config block when ocProviderName is absent.
+      if (options?.legacyCompat) return null;
       return 'client "opencode" with API key auth requires an OpenCode Provider name (e.g. anthropic, openai, maas)';
     }
     if (trimmedOcProvider.includes('/')) {

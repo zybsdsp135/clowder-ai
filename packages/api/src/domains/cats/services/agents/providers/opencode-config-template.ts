@@ -17,7 +17,7 @@
  *   5. Per-catId files isolate multiple opencode members in the same session
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // ── Legacy builtin-only config (Anthropic provider) ──────────────────────
@@ -171,6 +171,10 @@ export function writeOpenCodeRuntimeConfig(
   const safeCatId = catId.replace(/[^a-z0-9_-]/gi, '_');
   const configPath = join(configDir, `opencode-runtime-${safeCatId}.json`);
   const config = generateOpenCodeRuntimeConfig(options);
-  writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+  // Atomic write: temp file + rename avoids concurrent invocations reading a
+  // truncated or partially-written config for the same catId.
+  const tmpPath = `${configPath}.${process.pid}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf-8');
+  renameSync(tmpPath, configPath);
   return configPath;
 }

@@ -730,6 +730,61 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     }
   });
 
+  it('F189 legacy compat: PATCH allows editing an opencode+api_key member without ocProviderName', async () => {
+    // Regression: legacy opencode+api_key configs created before F189 have no
+    // ocProviderName. Editing these members (e.g. changing defaultModel) must not
+    // fail validation. The invoke path skips the F189 config block when absent.
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+    process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = projectRoot;
+
+    const { createProviderProfile } = await import('../dist/config/provider-profiles.js');
+    const legacyProfile = await createProviderProfile(projectRoot, {
+      displayName: 'Legacy MaaS Key',
+      authType: 'api_key',
+      protocol: 'openai',
+      baseUrl: 'https://api.legacy-maas.example',
+      apiKey: 'sk-legacy-maas',
+      models: ['glm-5', 'glm-4-plus'],
+    });
+
+    // Create the cat directly via createRuntimeCat (bypasses POST validation)
+    // to simulate a legacy config without ocProviderName.
+    const { createRuntimeCat } = await import('../dist/config/runtime-cat-catalog.js');
+    createRuntimeCat(projectRoot, {
+      catId: 'legacy-oc-member',
+      name: '旧金渐层',
+      displayName: '旧金渐层',
+      avatar: '/avatars/opencode.png',
+      color: { primary: '#0f172a', secondary: '#e2e8f0' },
+      mentionPatterns: ['@legacy-oc'],
+      roleDescription: '测试',
+      provider: 'opencode',
+      accountRef: legacyProfile.id,
+      defaultModel: 'glm-5',
+      mcpSupport: false,
+      cli: { command: 'opencode', outputFormat: 'text' },
+      // No ocProviderName — this is the legacy state
+    });
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    // PATCH with defaultModel change — triggers providerConfigTouched
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/cats/legacy-oc-member',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({ defaultModel: 'glm-4-plus' }),
+    });
+    assert.equal(patchRes.statusCode, 200, 'legacy member model edit should succeed without ocProviderName');
+  });
+
   it('POST /api/cats rejects catId values that are not lowercase-safe identifiers', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');

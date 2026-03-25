@@ -220,6 +220,7 @@ async function validateAccountBindingOrThrow(
   accountRef?: string | null,
   defaultModel?: string | null,
   ocProviderName?: string | null,
+  options?: { legacyCompat?: boolean },
 ): Promise<void> {
   const trimmedAccountRef = accountRef?.trim();
   if (client === 'antigravity' && trimmedAccountRef) {
@@ -237,7 +238,13 @@ async function validateAccountBindingOrThrow(
   if (compatibilityError) {
     throw new Error(compatibilityError);
   }
-  const modelFormatError = validateModelFormatForProvider(client, defaultModel, runtimeProfile.kind, ocProviderName);
+  const modelFormatError = validateModelFormatForProvider(
+    client,
+    defaultModel,
+    runtimeProfile.kind,
+    ocProviderName,
+    options,
+  );
   if (modelFormatError) {
     throw new Error(modelFormatError);
   }
@@ -512,12 +519,17 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
       try {
         const effectiveOcProviderName =
           body.ocProviderName !== undefined ? body.ocProviderName : currentCat.ocProviderName;
+        // Legacy compat: existing opencode+api_key members without ocProviderName
+        // can still be edited. Only require ocProviderName when the PATCH explicitly
+        // sets it or the cat already has one.
+        const legacyCompat = body.ocProviderName === undefined && !currentCat.ocProviderName;
         await validateAccountBindingOrThrow(
           projectRoot,
           effectiveClient,
           effectiveAccountRef,
           effectiveDefaultModel,
           effectiveOcProviderName,
+          { legacyCompat },
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
