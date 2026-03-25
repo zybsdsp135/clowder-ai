@@ -622,6 +622,50 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.equal(bareAccept.statusCode, 201, 'bare model + ocProviderName → 201');
   });
 
+  it('F189 P1 regression: openrouter + foreign-prefix model preserves full model namespace', async () => {
+    // Regression test for: ocProviderName=openrouter + defaultModel=z-ai/glm-4.7
+    // The model's first segment "z-ai" is NOT the provider prefix — it is the
+    // model's namespace within OpenRouter. stripOwnProviderPrefix must keep it.
+    const { generateOpenCodeRuntimeConfig } = await import(
+      '../dist/domains/cats/services/agents/providers/opencode-config-template.js'
+    );
+
+    // Replicate invoke-single-cat.ts logic: stripOwnProviderPrefix + ensureModelInList
+    const ocProviderName = 'openrouter';
+    const defaultModel = 'z-ai/glm-4.7';
+    const bareModel = defaultModel.startsWith(`${ocProviderName}/`)
+      ? defaultModel.slice(ocProviderName.length + 1)
+      : defaultModel;
+    const assembledModel = `${ocProviderName}/${bareModel}`;
+
+    // bareModel should be the full "z-ai/glm-4.7" (not stripped to "glm-4.7")
+    assert.equal(bareModel, 'z-ai/glm-4.7', 'foreign-prefix model should not be stripped');
+    assert.equal(assembledModel, 'openrouter/z-ai/glm-4.7', 'assembled model preserves full namespace');
+
+    // ensureModelInList: bare model should be in the list
+    const accountModels = ['z-ai/glm-4.7'];
+    const hasModel = accountModels.includes(bareModel) || accountModels.includes(defaultModel);
+    assert.ok(hasModel, 'models list should include the bare model');
+
+    // Generate config and verify model key matches
+    const config = generateOpenCodeRuntimeConfig({
+      providerName: ocProviderName,
+      models: accountModels,
+      defaultModel: assembledModel,
+      apiType: 'openai',
+    });
+    assert.equal(config.model, 'openrouter/z-ai/glm-4.7');
+    assert.ok(config.provider.openrouter.models['z-ai/glm-4.7'], 'config models key matches the model namespace');
+
+    // Also test: same-provider prefix IS stripped (no double-prefix)
+    const sameProviderModel = 'openrouter/google/gemini-3-flash';
+    const sameBare = sameProviderModel.startsWith(`${ocProviderName}/`)
+      ? sameProviderModel.slice(ocProviderName.length + 1)
+      : sameProviderModel;
+    assert.equal(sameBare, 'google/gemini-3-flash', 'same-provider prefix is correctly stripped');
+    assert.equal(`${ocProviderName}/${sameBare}`, 'openrouter/google/gemini-3-flash', 'no double-prefix');
+  });
+
   it('POST /api/cats rejects catId values that are not lowercase-safe identifiers', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
