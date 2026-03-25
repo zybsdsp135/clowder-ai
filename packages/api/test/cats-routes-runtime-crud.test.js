@@ -694,24 +694,36 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     // Regression: effectiveProtocol defaults to 'anthropic' for all opencode providers,
     // but apiType in the F189 block should only honor an EXPLICIT account protocol.
     // Custom providers like maas/deepseek without protocol must get 'openai' adapter.
+    // When explicit protocol IS set, it takes full precedence over ocProviderName heuristic.
 
-    // Simulate the fixed logic: use resolvedAccount.protocol (not effectiveProtocol)
+    // Simulate the fixed logic: explicit protocol first, then ocProviderName fallback
     const scenarios = [
+      // No explicit protocol → fall back to ocProviderName
       { protocol: undefined, ocProviderName: 'maas', expected: 'openai' },
       { protocol: undefined, ocProviderName: 'deepseek', expected: 'openai' },
-      { protocol: 'anthropic', ocProviderName: 'anthropic', expected: 'anthropic' },
-      { protocol: 'google', ocProviderName: 'custom-gemini', expected: 'google' },
       { protocol: undefined, ocProviderName: 'anthropic', expected: 'anthropic' },
       { protocol: undefined, ocProviderName: 'google', expected: 'google' },
+      // Explicit protocol → always wins over ocProviderName
+      { protocol: 'anthropic', ocProviderName: 'anthropic', expected: 'anthropic' },
+      { protocol: 'google', ocProviderName: 'custom-gemini', expected: 'google' },
       { protocol: 'openai', ocProviderName: 'openrouter', expected: 'openai' },
+      // Conflict: explicit protocol MUST override ocProviderName
+      { protocol: 'openai', ocProviderName: 'anthropic', expected: 'openai' },
+      { protocol: 'openai', ocProviderName: 'google', expected: 'openai' },
+      { protocol: 'google', ocProviderName: 'anthropic', expected: 'google' },
     ];
 
     for (const { protocol, ocProviderName, expected } of scenarios) {
       const explicitProtocol = protocol;
-      const apiType =
-        explicitProtocol === 'anthropic' || ocProviderName === 'anthropic'
+      const apiType = explicitProtocol
+        ? explicitProtocol === 'anthropic'
           ? 'anthropic'
-          : explicitProtocol === 'google' || ocProviderName === 'google'
+          : explicitProtocol === 'google'
+            ? 'google'
+            : 'openai'
+        : ocProviderName === 'anthropic'
+          ? 'anthropic'
+          : ocProviderName === 'google'
             ? 'google'
             : 'openai';
       assert.equal(apiType, expected, `protocol=${protocol}, ocProviderName=${ocProviderName} → ${expected}`);
