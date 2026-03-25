@@ -770,6 +770,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           models: ensureModelInList(resolvedAccount.models ?? [], defaultModel, ocProviderName),
           defaultModel: assembledModel,
           apiType,
+          hasBaseUrl: !!resolvedAccount.baseUrl,
         });
         callbackEnv.OPENCODE_CONFIG = configPath;
         if (resolvedAccount.apiKey) callbackEnv[OC_API_KEY_ENV] = resolvedAccount.apiKey;

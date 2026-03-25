@@ -205,6 +205,7 @@ describe('generateOpenCodeRuntimeConfig', () => {
       providerName: 'maas',
       models: ['glm-5', 'glm-4-plus'],
       defaultModel: 'maas/glm-5',
+      hasBaseUrl: true,
     });
 
     assert.ok(config.$schema, 'must have $schema');
@@ -219,6 +220,17 @@ describe('generateOpenCodeRuntimeConfig', () => {
     assert.deepStrictEqual(provider.models, { 'glm-5': { name: 'glm-5' }, 'glm-4-plus': { name: 'glm-4-plus' } });
     assert.strictEqual(provider.options.baseURL, `{env:${OC_BASE_URL_ENV}}`);
     assert.strictEqual(provider.options.apiKey, `{env:${OC_API_KEY_ENV}}`);
+  });
+
+  test('omits baseURL when hasBaseUrl is false or unset', () => {
+    const config = generateOpenCodeRuntimeConfig({
+      providerName: 'deepseek',
+      models: ['deepseek-r2'],
+      defaultModel: 'deepseek/deepseek-r2',
+    });
+    const provider = config.provider.deepseek;
+    assert.strictEqual(provider.options.baseURL, undefined, 'baseURL must not be present when hasBaseUrl is unset');
+    assert.strictEqual(provider.options.apiKey, `{env:${OC_API_KEY_ENV}}`, 'apiKey still present');
   });
 
   test('credentials use env substitution, no hardcoded secrets', () => {

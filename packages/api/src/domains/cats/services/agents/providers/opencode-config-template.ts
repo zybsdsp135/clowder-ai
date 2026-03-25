@@ -91,6 +91,8 @@ export interface OpenCodeRuntimeConfigOptions {
   defaultModel?: string;
   /** API SDK type: which wire protocol the endpoint speaks (default: "openai") */
   apiType?: 'openai' | 'anthropic' | 'google';
+  /** Whether a base URL will be set via env var at runtime */
+  hasBaseUrl?: boolean;
 }
 
 /**
@@ -106,12 +108,21 @@ export interface OpenCodeRuntimeConfigOptions {
  * @see https://opencode.ai/docs/models
  */
 export function generateOpenCodeRuntimeConfig(options: OpenCodeRuntimeConfigOptions): OpenCodeConfig {
-  const { providerName, models, defaultModel, apiType = 'openai' } = options;
+  const { providerName, models, defaultModel, apiType = 'openai', hasBaseUrl } = options;
 
   // models: keyed object where key = model ID used in `-m provider/modelId`
   const modelsMap: Record<string, { name: string }> = {};
   for (const modelName of models) {
     modelsMap[modelName] = { name: modelName };
+  }
+
+  const providerOptions: Record<string, string> = {
+    apiKey: `{env:${OC_API_KEY_ENV}}`,
+  };
+  // Only emit baseURL when the caller will set the env var; otherwise OpenCode
+  // substitutes an empty string and requests fail for profiles without a base URL.
+  if (hasBaseUrl) {
+    providerOptions.baseURL = `{env:${OC_BASE_URL_ENV}}`;
   }
 
   return {
@@ -121,10 +132,7 @@ export function generateOpenCodeRuntimeConfig(options: OpenCodeRuntimeConfigOpti
       [providerName]: {
         npm: NPM_ADAPTER_FOR_API_TYPE[apiType] ?? NPM_ADAPTER_FOR_API_TYPE.openai,
         models: modelsMap,
-        options: {
-          baseURL: `{env:${OC_BASE_URL_ENV}}`,
-          apiKey: `{env:${OC_API_KEY_ENV}}`,
-        },
+        options: providerOptions,
       },
     },
   };
