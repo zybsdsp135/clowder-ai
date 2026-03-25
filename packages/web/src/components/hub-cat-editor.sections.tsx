@@ -373,7 +373,7 @@ export function AccountSection({
                     label: profile.builtin ? `${profile.displayName}（内置）` : `${profile.displayName}（API Key）`,
                   })),
               ]}
-              onChange={(value) => onChange({ accountRef: value, defaultModel: '' })}
+              onChange={(value) => onChange({ accountRef: value, defaultModel: '', ocProviderName: '' })}
               disabled={loadingProfiles}
               required
             />

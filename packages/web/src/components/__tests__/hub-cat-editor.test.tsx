@@ -454,6 +454,84 @@ describe('HubCatEditor', () => {
     expect(modelInputAfter.value).not.toBe('claude-opus-4-6');
   });
 
+  it('resets ocProviderName when switching account to prevent stale provider carry-over', async () => {
+    mockApiFetch.mockResolvedValue(
+      jsonResponse({
+        projectPath: '/tmp/project',
+        activeProfileId: null,
+        providers: [
+          {
+            id: 'maas-key',
+            provider: 'maas-key',
+            displayName: 'MaaS Key',
+            name: 'MaaS Key',
+            authType: 'api_key',
+            kind: 'api_key',
+            builtin: false,
+            models: ['glm-5'],
+            hasApiKey: true,
+            baseUrl: 'https://maas.example',
+            createdAt: '',
+            updatedAt: '',
+          },
+          {
+            id: 'deepseek-key',
+            provider: 'deepseek-key',
+            displayName: 'DeepSeek Key',
+            name: 'DeepSeek Key',
+            authType: 'api_key',
+            kind: 'api_key',
+            builtin: false,
+            models: ['deepseek-r2'],
+            hasApiKey: true,
+            baseUrl: 'https://deepseek.example',
+            createdAt: '',
+            updatedAt: '',
+          },
+        ],
+      }),
+    );
+
+    await act(async () => {
+      root.render(
+        React.createElement(HubCatEditor, {
+          open: true,
+          cat: {
+            id: 'oc-maas',
+            displayName: 'OC MaaS',
+            breedDisplayName: 'OpenCode',
+            nickname: '',
+            provider: 'opencode',
+            accountRef: 'maas-key',
+            defaultModel: 'maas/glm-5',
+            ocProviderName: 'maas',
+            color: { primary: '#000', secondary: '#fff' },
+            mentionPatterns: ['@oc-maas'],
+            avatar: '',
+            roleDescription: '',
+            personality: '',
+            source: 'runtime',
+          } as CatData,
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+    });
+    await flushEffects();
+
+    // Initially ocProviderName should be 'maas'
+    const providerInput = queryField<HTMLInputElement>(container, 'input[aria-label="OC Provider Name"]');
+    expect(providerInput.value).toBe('maas');
+
+    // Switch account to deepseek-key
+    await changeField(queryField(container, 'select[aria-label="认证信息"]'), 'deepseek-key', 'change');
+    await flushEffects();
+
+    // ocProviderName should have been cleared (not still 'maas')
+    const providerInputAfter = queryField<HTMLInputElement>(container, 'input[aria-label="OC Provider Name"]');
+    expect(providerInputAfter.value).toBe('');
+  });
+
   it('switches to Antigravity branch and shows CLI command field', async () => {
     mockApiFetch.mockResolvedValue(
       jsonResponse({
