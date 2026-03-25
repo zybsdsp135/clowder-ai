@@ -56,9 +56,18 @@ import {
 import { SessionMutex } from './SessionMutex.js';
 import type { TaskProgressItem, TaskProgressStatus, TaskProgressStore } from './TaskProgressStore.js';
 
+/**
+ * Strip the provider prefix from a model ID only when it matches ocProviderName
+ * (redundant prefix). Otherwise keep the full ID — it is the model's namespace
+ * within the provider (e.g. OpenRouter's "z-ai/glm-4.7").
+ */
+function stripOwnProviderPrefix(model: string, ocProviderName: string): string {
+  return model.startsWith(`${ocProviderName}/`) ? model.slice(ocProviderName.length + 1) : model;
+}
+
 /** Ensure defaultModel is present in the models list for runtime config generation. */
-function ensureModelInList(models: string[], defaultModel: string): string[] {
-  const bare = defaultModel.includes('/') ? defaultModel.split('/').slice(1).join('/') : defaultModel;
+function ensureModelInList(models: string[], defaultModel: string, ocProviderName: string): string[] {
+  const bare = stripOwnProviderPrefix(defaultModel, ocProviderName);
   if (models.includes(bare) || models.includes(defaultModel)) return models;
   return [...models, bare];
 }
@@ -740,7 +749,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // are both handled identically: generate a per-catId runtime config, assemble provider/model.
     const ocProviderName = catConfig?.ocProviderName?.trim();
     if (provider === 'opencode' && resolvedAccount?.authType === 'api_key' && ocProviderName && defaultModel) {
-      const bareModel = defaultModel.includes('/') ? defaultModel.split('/').slice(1).join('/') : defaultModel;
+      const bareModel = stripOwnProviderPrefix(defaultModel, ocProviderName);
       const assembledModel = `${ocProviderName}/${bareModel}`;
       callbackEnv.CAT_CAFE_ANTHROPIC_MODEL_OVERRIDE = assembledModel;
       try {
@@ -751,7 +760,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           ocProviderName === 'anthropic' ? 'anthropic' : ocProviderName === 'google' ? 'google' : 'openai';
         const configPath = writeOpenCodeRuntimeConfig(projectRoot, catId as string, {
           providerName: ocProviderName,
-          models: ensureModelInList(resolvedAccount.models ?? [], defaultModel),
+          models: ensureModelInList(resolvedAccount.models ?? [], defaultModel, ocProviderName),
           defaultModel: assembledModel,
           apiType,
         });
