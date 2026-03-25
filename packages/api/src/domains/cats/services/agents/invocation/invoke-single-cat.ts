@@ -58,7 +58,7 @@ import type { TaskProgressItem, TaskProgressStatus, TaskProgressStore } from './
 
 /** Ensure defaultModel is present in the models list for runtime config generation. */
 function ensureModelInList(models: string[], defaultModel: string): string[] {
-  const bare = defaultModel.includes('/') ? defaultModel.split('/').pop()! : defaultModel;
+  const bare = defaultModel.includes('/') ? defaultModel.split('/').slice(1).join('/') : defaultModel;
   if (models.includes(bare) || models.includes(defaultModel)) return models;
   return [...models, bare];
 }
@@ -740,7 +740,8 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // are both handled identically: generate a per-catId runtime config, assemble provider/model.
     const ocProviderName = catConfig?.ocProviderName?.trim();
     if (provider === 'opencode' && resolvedAccount?.authType === 'api_key' && ocProviderName && defaultModel) {
-      const assembledModel = defaultModel.includes('/') ? defaultModel : `${ocProviderName}/${defaultModel}`;
+      const bareModel = defaultModel.includes('/') ? defaultModel.split('/').slice(1).join('/') : defaultModel;
+      const assembledModel = `${ocProviderName}/${bareModel}`;
       callbackEnv.CAT_CAFE_ANTHROPIC_MODEL_OVERRIDE = assembledModel;
       try {
         // Infer apiType from ocProviderName (not effectiveProtocol — protocol UI was removed).

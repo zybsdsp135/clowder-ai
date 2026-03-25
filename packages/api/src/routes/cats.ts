@@ -503,7 +503,10 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
       nextAccountRef !== undefined ? (nextAccountRef ?? undefined) : currentEffectiveAccountRef;
     const effectiveDefaultModel = body.defaultModel !== undefined ? body.defaultModel : currentCat.defaultModel;
     const providerConfigTouched =
-      body.client !== undefined || body.defaultModel !== undefined || nextAccountRef !== undefined;
+      body.client !== undefined ||
+      body.defaultModel !== undefined ||
+      nextAccountRef !== undefined ||
+      body.ocProviderName !== undefined;
 
     if (providerConfigTouched) {
       try {
@@ -566,7 +569,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         ...(body.cliConfigArgs !== undefined ? { cliConfigArgs: body.cliConfigArgs } : {}),
         ...(body.ocProviderName !== undefined
           ? body.ocProviderName === null
-            ? { ocProviderName: undefined }
+            ? { ocProviderName: null }
             : { ocProviderName: body.ocProviderName }
           : {}),
       });
