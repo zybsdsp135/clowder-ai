@@ -757,11 +757,14 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       const assembledModel = `${ocProviderName}/${bareModel}`;
       callbackEnv.CAT_CAFE_ANTHROPIC_MODEL_OVERRIDE = assembledModel;
       try {
-        // Infer apiType from ocProviderName (not effectiveProtocol — protocol UI was removed).
-        // Most third-party APIs are OpenAI-compatible; only "anthropic" and "google" need
-        // their native adapters. This covers maas, deepseek, openrouter, etc. as openai.
+        // Prefer effectiveProtocol (from resolvedAccount.protocol) for API adapter selection.
+        // Falls back to ocProviderName heuristic for profiles without explicit protocol.
         const apiType: 'openai' | 'anthropic' | 'google' =
-          ocProviderName === 'anthropic' ? 'anthropic' : ocProviderName === 'google' ? 'google' : 'openai';
+          effectiveProtocol === 'anthropic' || ocProviderName === 'anthropic'
+            ? 'anthropic'
+            : effectiveProtocol === 'google' || ocProviderName === 'google'
+              ? 'google'
+              : 'openai';
         const configPath = writeOpenCodeRuntimeConfig(projectRoot, catId as string, {
           providerName: ocProviderName,
           models: ensureModelInList(resolvedAccount.models ?? [], defaultModel, ocProviderName),

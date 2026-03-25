@@ -158,7 +158,10 @@ export function writeOpenCodeRuntimeConfig(
 ): string {
   const configDir = join(projectRoot, '.cat-cafe');
   mkdirSync(configDir, { recursive: true });
-  const configPath = join(configDir, `opencode-runtime-${catId}.json`);
+  // Sanitize catId to prevent path traversal (defense-in-depth; CRUD route already
+  // validates ^[a-z][a-z0-9_-]*$ but this function may be called from other contexts).
+  const safeCatId = catId.replace(/[^a-z0-9_-]/gi, '_');
+  const configPath = join(configDir, `opencode-runtime-${safeCatId}.json`);
   const config = generateOpenCodeRuntimeConfig(options);
   writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
   return configPath;
