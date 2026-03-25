@@ -784,6 +784,18 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     });
     assert.equal(patchRes.statusCode, 200, 'legacy member model edit should succeed without ocProviderName');
 
+    // Editor always sends accountRef even when unchanged — must still succeed
+    const editorPatchRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/cats/legacy-oc-member',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({ defaultModel: 'glm-4-plus', providerProfileId: legacyProfile.id }),
+    });
+    assert.equal(editorPatchRes.statusCode, 200, 'unchanged accountRef in PATCH should not defeat legacy compat');
+
     // But switching accountRef on a legacy member WITHOUT ocProviderName must be rejected —
     // a new binding requires ocProviderName.
     const { createProviderProfile: createProfile2 } = await import('../dist/config/provider-profiles.js');

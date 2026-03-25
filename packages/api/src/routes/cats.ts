@@ -523,7 +523,8 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         // can still be edited for non-binding changes (name, model, etc.).
         // NOT allowed when: switching accountRef, or switching client to opencode
         // from another provider — both create a new binding that must have ocProviderName.
-        const isBindingChange = nextAccountRef !== undefined;
+        // Compare against current binding — editor always sends accountRef even when unchanged.
+        const isBindingChange = nextAccountRef !== undefined && nextAccountRef !== currentEffectiveAccountRef;
         const isClientSwitch = body.client !== undefined && body.client !== currentCat.provider;
         const isExistingOpencode = currentCat.provider === 'opencode';
         const legacyCompat =
