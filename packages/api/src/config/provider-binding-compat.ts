@@ -58,6 +58,9 @@ export function validateModelFormatForProvider(
     if (!trimmedOcProvider) {
       return 'client "opencode" with API key auth requires an OpenCode Provider name (e.g. anthropic, openai, maas)';
     }
+    if (trimmedOcProvider.includes('/')) {
+      return 'OpenCode Provider name must not contain "/" — use a plain identifier (e.g. "openrouter", not "openrouter/google")';
+    }
   }
   return null;
 }
