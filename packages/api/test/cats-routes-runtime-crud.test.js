@@ -664,6 +664,30 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
       : sameProviderModel;
     assert.equal(sameBare, 'google/gemini-3-flash', 'same-provider prefix is correctly stripped');
     assert.equal(`${ocProviderName}/${sameBare}`, 'openrouter/google/gemini-3-flash', 'no double-prefix');
+
+    // P1 regression: ensureModelInList must replace prefixed form with bare, not early-return
+    const prefixedModels = ['openrouter/google/gemini-3-flash', 'other-model'];
+    const ensuredBare = sameBare; // google/gemini-3-flash
+    // Simulate ensureModelInList logic: bare not in list, but prefixed IS → replace
+    const hasBare = prefixedModels.includes(ensuredBare);
+    assert.equal(hasBare, false, 'bare model is NOT in prefixed list');
+    assert.ok(prefixedModels.includes(sameProviderModel), 'prefixed form IS in list');
+    const corrected = prefixedModels.map((m) => (m === sameProviderModel ? ensuredBare : m));
+    assert.deepEqual(corrected, ['google/gemini-3-flash', 'other-model'], 'prefixed form replaced with bare');
+
+    // Verify config uses corrected models
+    const correctedConfig = generateOpenCodeRuntimeConfig({
+      providerName: ocProviderName,
+      models: corrected,
+      defaultModel: `${ocProviderName}/${ensuredBare}`,
+      apiType: 'openai',
+    });
+    assert.ok(correctedConfig.provider.openrouter.models['google/gemini-3-flash'], 'bare key in config');
+    assert.equal(
+      correctedConfig.provider.openrouter.models['openrouter/google/gemini-3-flash'],
+      undefined,
+      'prefixed key NOT in config',
+    );
   });
 
   it('POST /api/cats rejects catId values that are not lowercase-safe identifiers', async () => {

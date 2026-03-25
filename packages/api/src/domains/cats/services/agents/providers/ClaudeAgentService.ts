@@ -283,7 +283,11 @@ export class ClaudeAgentService implements AgentService {
               !k.includes('CALLBACK_TOKEN'),
           ),
         );
-        claudeLog.info({ catId: this.catId, cliArgs: args, envOverrides: safeEnv }, 'Claude CLI spawn params');
+        // Redact -p prompt and --append-system-prompt to prevent user input leaking to info logs
+        const safeArgs = args.map((a, i) =>
+          i > 0 && (args[i - 1] === '-p' || args[i - 1] === '--append-system-prompt') ? '[REDACTED]' : a,
+        );
+        claudeLog.info({ catId: this.catId, cliArgs: safeArgs, envOverrides: safeEnv }, 'Claude CLI spawn params');
       }
 
       const cliOpts = {

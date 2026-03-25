@@ -68,7 +68,11 @@ function stripOwnProviderPrefix(model: string, ocProviderName: string): string {
 /** Ensure defaultModel is present in the models list for runtime config generation. */
 function ensureModelInList(models: string[], defaultModel: string, ocProviderName: string): string[] {
   const bare = stripOwnProviderPrefix(defaultModel, ocProviderName);
-  if (models.includes(bare) || models.includes(defaultModel)) return models;
+  if (models.includes(bare)) return models;
+  // Replace prefixed form with bare so runtime config key matches provider namespace
+  if (bare !== defaultModel && models.includes(defaultModel)) {
+    return models.map((m) => (m === defaultModel ? bare : m));
+  }
   return [...models, bare];
 }
 
