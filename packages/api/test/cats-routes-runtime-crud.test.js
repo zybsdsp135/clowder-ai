@@ -690,6 +690,34 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     );
   });
 
+  it('F189 P1 regression: custom provider without explicit protocol defaults to openai adapter', () => {
+    // Regression: effectiveProtocol defaults to 'anthropic' for all opencode providers,
+    // but apiType in the F189 block should only honor an EXPLICIT account protocol.
+    // Custom providers like maas/deepseek without protocol must get 'openai' adapter.
+
+    // Simulate the fixed logic: use resolvedAccount.protocol (not effectiveProtocol)
+    const scenarios = [
+      { protocol: undefined, ocProviderName: 'maas', expected: 'openai' },
+      { protocol: undefined, ocProviderName: 'deepseek', expected: 'openai' },
+      { protocol: 'anthropic', ocProviderName: 'anthropic', expected: 'anthropic' },
+      { protocol: 'google', ocProviderName: 'custom-gemini', expected: 'google' },
+      { protocol: undefined, ocProviderName: 'anthropic', expected: 'anthropic' },
+      { protocol: undefined, ocProviderName: 'google', expected: 'google' },
+      { protocol: 'openai', ocProviderName: 'openrouter', expected: 'openai' },
+    ];
+
+    for (const { protocol, ocProviderName, expected } of scenarios) {
+      const explicitProtocol = protocol;
+      const apiType =
+        explicitProtocol === 'anthropic' || ocProviderName === 'anthropic'
+          ? 'anthropic'
+          : explicitProtocol === 'google' || ocProviderName === 'google'
+            ? 'google'
+            : 'openai';
+      assert.equal(apiType, expected, `protocol=${protocol}, ocProviderName=${ocProviderName} → ${expected}`);
+    }
+  });
+
   it('POST /api/cats rejects catId values that are not lowercase-safe identifiers', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');

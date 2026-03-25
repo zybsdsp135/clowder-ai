@@ -757,12 +757,13 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       const assembledModel = `${ocProviderName}/${bareModel}`;
       callbackEnv.CAT_CAFE_ANTHROPIC_MODEL_OVERRIDE = assembledModel;
       try {
-        // Prefer effectiveProtocol (from resolvedAccount.protocol) for API adapter selection.
-        // Falls back to ocProviderName heuristic for profiles without explicit protocol.
+        // Use explicit account protocol (not effectiveProtocol which defaults to 'anthropic'
+        // for all opencode providers). Custom providers without explicit protocol default to openai.
+        const explicitProtocol = resolvedAccount.protocol;
         const apiType: 'openai' | 'anthropic' | 'google' =
-          effectiveProtocol === 'anthropic' || ocProviderName === 'anthropic'
+          explicitProtocol === 'anthropic' || ocProviderName === 'anthropic'
             ? 'anthropic'
-            : effectiveProtocol === 'google' || ocProviderName === 'google'
+            : explicitProtocol === 'google' || ocProviderName === 'google'
               ? 'google'
               : 'openai';
         const configPath = writeOpenCodeRuntimeConfig(projectRoot, catId as string, {
