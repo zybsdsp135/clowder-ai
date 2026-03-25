@@ -783,6 +783,33 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
       body: JSON.stringify({ defaultModel: 'glm-4-plus' }),
     });
     assert.equal(patchRes.statusCode, 200, 'legacy member model edit should succeed without ocProviderName');
+
+    // But switching accountRef on a legacy member WITHOUT ocProviderName must be rejected —
+    // a new binding requires ocProviderName.
+    const { createProviderProfile: createProfile2 } = await import('../dist/config/provider-profiles.js');
+    const newProfile = await createProfile2(projectRoot, {
+      displayName: 'New DeepSeek Key',
+      authType: 'api_key',
+      protocol: 'openai',
+      baseUrl: 'https://api.deepseek.example',
+      apiKey: 'sk-deepseek',
+      models: ['deepseek-r2'],
+    });
+
+    const switchRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/cats/legacy-oc-member',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({ providerProfileId: newProfile.id }),
+    });
+    assert.equal(
+      switchRes.statusCode,
+      400,
+      'switching account on legacy member without ocProviderName should be rejected',
+    );
   });
 
   it('POST /api/cats rejects catId values that are not lowercase-safe identifiers', async () => {

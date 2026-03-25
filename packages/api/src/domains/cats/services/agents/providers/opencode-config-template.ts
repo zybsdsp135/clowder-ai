@@ -171,9 +171,9 @@ export function writeOpenCodeRuntimeConfig(
   const safeCatId = catId.replace(/[^a-z0-9_-]/gi, '_');
   const configPath = join(configDir, `opencode-runtime-${safeCatId}.json`);
   const config = generateOpenCodeRuntimeConfig(options);
-  // Atomic write: temp file + rename avoids concurrent invocations reading a
-  // truncated or partially-written config for the same catId.
-  const tmpPath = `${configPath}.${process.pid}.tmp`;
+  // Atomic write: unique temp file + rename avoids concurrent invocations
+  // reading truncated JSON or overwriting each other's temp file.
+  const tmpPath = `${configPath}.${crypto.randomUUID()}.tmp`;
   writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf-8');
   renameSync(tmpPath, configPath);
   return configPath;
