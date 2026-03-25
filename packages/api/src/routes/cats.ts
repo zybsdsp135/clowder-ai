@@ -521,10 +521,17 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           body.ocProviderName !== undefined ? body.ocProviderName : currentCat.ocProviderName;
         // Legacy compat: existing opencode+api_key members without ocProviderName
         // can still be edited for non-binding changes (name, model, etc.).
-        // NOT allowed when switching accountRef — that creates a new binding
-        // which must have ocProviderName set.
+        // NOT allowed when: switching accountRef, or switching client to opencode
+        // from another provider — both create a new binding that must have ocProviderName.
         const isBindingChange = nextAccountRef !== undefined;
-        const legacyCompat = body.ocProviderName === undefined && !currentCat.ocProviderName && !isBindingChange;
+        const isClientSwitch = body.client !== undefined && body.client !== currentCat.provider;
+        const isExistingOpencode = currentCat.provider === 'opencode';
+        const legacyCompat =
+          body.ocProviderName === undefined &&
+          !currentCat.ocProviderName &&
+          !isBindingChange &&
+          !isClientSwitch &&
+          isExistingOpencode;
         await validateAccountBindingOrThrow(
           projectRoot,
           effectiveClient,

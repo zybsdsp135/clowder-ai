@@ -783,7 +783,10 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
         if (resolvedAccount.baseUrl) callbackEnv[OC_BASE_URL_ENV] = resolvedAccount.baseUrl;
         log.info({ catId, configPath, provider: ocProviderName, apiType }, 'OpenCode runtime config written');
       } catch (err) {
-        log.warn({ catId, err }, 'Failed to write OpenCode runtime config — falling back to env vars');
+        log.error({ catId, err }, 'Failed to write OpenCode runtime config');
+        throw new Error(
+          `OpenCode runtime config write failed for cat "${catId}": ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
