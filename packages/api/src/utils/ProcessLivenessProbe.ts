@@ -11,6 +11,8 @@
 
 import { execFile } from 'node:child_process';
 
+const IS_WINDOWS = process.platform === 'win32';
+
 export type LivenessState = 'active' | 'busy-silent' | 'idle-silent' | 'dead';
 
 export interface LivenessWarningEvent {
@@ -126,6 +128,23 @@ export class ProcessLivenessProbe {
       process.kill(this.pid, 0); // signal 0 = existence check
     } catch {
       this.pidAlive = false;
+      return;
+    }
+
+    // Windows has no `ps` by default. Fall back to a lightweight existence-only
+    // probe so CLI children are not misclassified as dead immediately.
+    if (IS_WINDOWS) {
+      this.pidAlive = true;
+      this.cpuGrowing = false;
+
+      const silenceMs = Date.now() - this.lastActivityAt;
+      if (silenceMs >= this.config.stallWarningMs && !this.stallWarningEmitted) {
+        this.stallWarningEmitted = true;
+        this.warningQueue.push(this.makeWarning('suspected_stall', silenceMs));
+      } else if (silenceMs >= this.config.softWarningMs && !this.softWarningEmitted) {
+        this.softWarningEmitted = true;
+        this.warningQueue.push(this.makeWarning('alive_but_silent', silenceMs));
+      }
       return;
     }
 

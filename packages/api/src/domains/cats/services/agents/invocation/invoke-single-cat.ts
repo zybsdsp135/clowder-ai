@@ -84,6 +84,15 @@ function abortableNext<T>(iter: AsyncIterator<T>, signal: AbortSignal): Promise<
 const ANTHROPIC_PROFILE_MODE_KEY = 'CAT_CAFE_ANTHROPIC_PROFILE_MODE';
 const ANTHROPIC_PROFILE_MODE_API_KEY = 'api_key';
 
+function buildDirectReplyFallbackPrompt(prompt: string): string {
+  const marker = '\n\n---\n\n';
+  const parts = prompt
+    .split(marker)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.at(-1) ?? prompt;
+}
+
 /** Derive a URL-safe slug from profile ID for proxy routing. */
 function deriveProxySlug(profileId: string): string {
   // "profile-a247a834-1ac1-4752-aa73-6bd159b9acc5" → "a247a834"
@@ -1199,16 +1208,22 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // 1) stale --resume session: "No conversation found with session ID ..."
     // 2) poisoned --resume session: "prompt token count ... exceeds the limit ..."
     // 3) transient CLI bootstrap exit: "CLI 异常退出 (code: 1, signal: none)"
+    const disableWindowsGeminiResume = process.platform === 'win32' && catId === 'gemini';
     const initialResumeSessionId = sessionId;
-    const shouldTrackGeminiResumeFailures = catId === 'gemini' && Boolean(initialResumeSessionId);
+    const shouldTrackGeminiResumeFailures =
+      catId === 'gemini' && Boolean(initialResumeSessionId) && !disableWindowsGeminiResume;
     const resumeFailureCounts: Partial<Record<ResumeFailureKind, number>> = {};
     const maxAttempts = 2;
     let allowSessionRetry = Boolean(sessionId);
     let allowTransientRetry = true;
+    const allowWindowsSilentPromptRetry =
+      process.platform === 'win32' && (provider === 'anthropic' || provider === 'openai' || provider === 'google');
+    let allowSilentPromptRetry = allowWindowsSilentPromptRetry;
+    let invokePrompt = effectivePrompt;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const attemptStartedAt = Date.now();
       const options: AgentServiceOptions = {
-        ...(sessionId ? { sessionId } : {}),
+        ...(sessionId && !disableWindowsGeminiResume ? { sessionId } : {}),
         ...baseOptions,
       };
       let suppressedMissingSessionError: AgentMessage | undefined;
@@ -1217,14 +1232,16 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       let shouldRetryWithoutSession = false;
       let shouldRetryOnTransientCliExit = false;
       let attemptHasContentOutput = false;
+      let attemptSawError = false;
 
       // F089: Use abortableNext instead of `for await` so the invocation timeout
       // can break out even when the service generator is stuck on an unresolvable await.
-      const serviceIter = service.invoke(effectivePrompt, options)[Symbol.asyncIterator]();
+      const serviceIter = service.invoke(invokePrompt, options)[Symbol.asyncIterator]();
       for (;;) {
         const iterResult = await abortableNext(serviceIter, signal);
         if (iterResult.done) break;
         const msg = iterResult.value;
+        if (msg.type === 'error') attemptSawError = true;
         if (shouldTrackGeminiResumeFailures && options.sessionId && msg.type === 'error') {
           const failureKind = classifyResumeFailure(msg.error);
           if (failureKind) {
@@ -1368,6 +1385,16 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
             'Gemini retrying invoke',
           );
         }
+        allowTransientRetry = false;
+        continue;
+      }
+      if (allowSilentPromptRetry && !attemptHasContentOutput && !attemptSawError && attempt + 1 < maxAttempts) {
+        sessionId = undefined;
+        delete baseOptions.cliSessionId;
+        delete baseOptions.callbackEnv;
+        invokePrompt = buildDirectReplyFallbackPrompt(promptWithMission);
+        allowSilentPromptRetry = false;
+        allowSessionRetry = false;
         allowTransientRetry = false;
         continue;
       }

@@ -13,6 +13,12 @@ interface ParseError {
   readonly error: string;
 }
 
+/** Sentinel object for plain-text lines in streams that should have been NDJSON */
+interface PlainTextLine {
+  readonly __plainTextLine: true;
+  readonly line: string;
+}
+
 /**
  * Parse a Readable stream of NDJSON (newline-delimited JSON) into
  * an async iterable of parsed objects.
@@ -33,6 +39,13 @@ export async function* parseNDJSON(stream: Readable): AsyncGenerator<unknown> {
     try {
       yield JSON.parse(trimmed) as unknown;
     } catch {
+      if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+        yield {
+          __plainTextLine: true,
+          line: trimmed,
+        } satisfies PlainTextLine as unknown;
+        continue;
+      }
       yield {
         __parseError: true,
         line: trimmed,
@@ -51,5 +64,14 @@ export function isParseError(value: unknown): value is ParseError {
     value !== null &&
     '__parseError' in value &&
     (value as Record<string, unknown>).__parseError === true
+  );
+}
+
+export function isPlainTextLine(value: unknown): value is PlainTextLine {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    '__plainTextLine' in value &&
+    (value as Record<string, unknown>).__plainTextLine === true
   );
 }

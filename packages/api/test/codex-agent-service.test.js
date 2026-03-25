@@ -97,6 +97,11 @@ test('yields session_init, text, and done on basic success', async () => {
   assert.equal(msgs[1].type, 'text');
   assert.equal(msgs[1].content, 'Hello from Codex!');
   assert.equal(msgs[2].type, 'done');
+
+  const args = spawnFn.mock.calls[0].arguments[1];
+  const modelFlagIndex = args.indexOf('--model');
+  assert.ok(modelFlagIndex >= 0, 'fresh exec args must include --model');
+  assert.equal(args[modelFlagIndex + 1], 'gpt-5.4');
 });
 
 test('uses exec resume when sessionId is provided', async () => {
@@ -128,6 +133,27 @@ test('uses exec resume when sessionId is provided', async () => {
   assert.ok(args.includes('--config'), 'resume args must include approval policy override');
   assert.ok(args.includes('approval_policy="on-request"'), 'default approval policy should be on-request');
   assert.ok(!args.includes('approval_policy=\\"on-request\\"'), 'argv should not contain literal backslash escapes');
+});
+
+test('normalizes bare codex model override to gpt-5.4', async () => {
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new CodexAgentService({ spawnFn, model: 'codex' });
+
+  const promise = collect(
+    service.invoke('Continue', {
+      callbackEnv: {
+        CAT_CAFE_OPENAI_MODEL_OVERRIDE: 'codex',
+      },
+    }),
+  );
+  emitCodexEvents(proc, [{ type: 'thread.started', thread_id: 'thread-normalized' }]);
+  await promise;
+
+  const args = spawnFn.mock.calls[0].arguments[1];
+  const modelFlagIndex = args.indexOf('--model');
+  assert.ok(modelFlagIndex >= 0, 'normalized exec args must include --model');
+  assert.equal(args[modelFlagIndex + 1], 'gpt-5.4');
 });
 
 test('injects cat-cafe MCP config even when cwd is outside repo', async () => {

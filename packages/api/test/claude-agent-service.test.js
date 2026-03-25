@@ -280,6 +280,41 @@ test('F062: subscription profile clears inherited ANTHROPIC env vars', async () 
   }
 });
 
+test('preserves inherited Claude launcher env when callback overrides are present', async () => {
+  const prevClaudeCode = process.env.CLAUDECODE;
+  const prevEntrypoint = process.env.CLAUDE_CODE_ENTRYPOINT;
+  process.env.CLAUDECODE = '1';
+  process.env.CLAUDE_CODE_ENTRYPOINT = 'desktop';
+
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new ClaudeAgentService({ spawnFn });
+
+  try {
+    const promise = collect(
+      service.invoke('hello', {
+        callbackEnv: {
+          CAT_CAFE_API_URL: 'http://localhost:3004',
+          CAT_CAFE_INVOCATION_ID: 'inv-claude-env',
+          CAT_CAFE_CALLBACK_TOKEN: 'token-claude-env',
+          CAT_CAFE_ANTHROPIC_PROFILE_MODE: 'subscription',
+        },
+      }),
+    );
+    emitClaudeEvents(proc, [{ type: 'result', subtype: 'success' }]);
+    await promise;
+
+    const spawnOpts = spawnFn.mock.calls[0].arguments[2];
+    assert.equal(spawnOpts.env.CLAUDECODE, '1');
+    assert.equal(spawnOpts.env.CLAUDE_CODE_ENTRYPOINT, 'desktop');
+  } finally {
+    if (prevClaudeCode === undefined) delete process.env.CLAUDECODE;
+    else process.env.CLAUDECODE = prevClaudeCode;
+    if (prevEntrypoint === undefined) delete process.env.CLAUDE_CODE_ENTRYPOINT;
+    else process.env.CLAUDE_CODE_ENTRYPOINT = prevEntrypoint;
+  }
+});
+
 test('F062: api_key profile injects ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL', async () => {
   const prevApiKey = process.env.ANTHROPIC_API_KEY;
   const prevBaseUrl = process.env.ANTHROPIC_BASE_URL;

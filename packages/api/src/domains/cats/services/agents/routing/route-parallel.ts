@@ -41,6 +41,7 @@ import {
 import { buildVoteTally, checkVoteCompletion, extractVoteFromText, VOTE_RESULT_SOURCE } from './vote-intercept.js';
 
 const log = createModuleLogger('route-parallel');
+const DISABLE_HTTP_CALLBACK_INJECTION_ON_WINDOWS = process.platform === 'win32';
 
 export async function* routeParallel(
   deps: RouteStrategyDeps,
@@ -122,7 +123,7 @@ export async function* routeParallel(
       const mcpAvailable = (catConfig?.mcpSupport ?? false) && !!mcpServerPath;
       const staticIdentity = buildStaticIdentity(catId, { mcpAvailable });
       // F041: inject HTTP callback only when MCP is NOT actually available (fallback)
-      const mcpInstructions = needsMcpInjection(mcpAvailable)
+      const mcpInstructions = !DISABLE_HTTP_CALLBACK_INJECTION_ON_WINDOWS && needsMcpInjection(mcpAvailable)
         ? buildMcpCallbackInstructions({
             currentCatId: catId as string,
             teammates: teammates.map((id) => id as string),

@@ -21,6 +21,7 @@ import { type CatId, createCatId } from '@cat-cafe/shared';
 import { getCatEffort } from '../../../../../config/cat-config-loader.js';
 import { getCatModel } from '../../../../../config/cat-models.js';
 import { formatCliExitError } from '../../../../../utils/cli-format.js';
+import { isPlainTextLine } from '../../../../../utils/ndjson-parser.js';
 import { formatCliNotFoundError, resolveCliCommand } from '../../../../../utils/cli-resolve.js';
 import { isCliError, isCliTimeout, isLivenessWarning, spawnCli } from '../../../../../utils/cli-spawn.js';
 import type { SpawnFn } from '../../../../../utils/cli-types.js';
@@ -58,9 +59,6 @@ export { pickGitBashPathFromWhere } from './claude-agent-win.js';
 
 function buildClaudeEnvOverrides(callbackEnv?: Record<string, string>): Record<string, string | null> {
   const env: Record<string, string | null> = { ...(callbackEnv ?? {}) };
-
-  env.CLAUDECODE = null;
-  env.CLAUDE_CODE_ENTRYPOINT = null;
 
   if (IS_WINDOWS) {
     const gitBash = findGitBashPath();
@@ -170,9 +168,6 @@ export class ClaudeAgentService implements AgentService {
       getCatEffort(this.catId as string),
       '--permission-mode',
       PERMISSION_MODE,
-      // Skip global user settings to prevent config pollution across sessions
-      '--setting-sources',
-      'project,local',
       // Enable Chrome MCP integration (built-in, requires Chrome + extension running)
       '--chrome',
     ];
@@ -291,6 +286,17 @@ export class ClaudeAgentService implements AgentService {
             type: 'error',
             catId: this.catId,
             error,
+            metadata,
+            timestamp: Date.now(),
+          };
+          continue;
+        }
+
+        if (isPlainTextLine(event)) {
+          yield {
+            type: 'text',
+            catId: this.catId,
+            content: event.line,
             metadata,
             timestamp: Date.now(),
           };

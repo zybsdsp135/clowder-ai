@@ -40,6 +40,7 @@ import {
 import { extractImagePaths } from '../providers/image-paths.js';
 
 const log = createModuleLogger('codex-agent');
+const IS_WINDOWS = process.platform === 'win32';
 
 /**
  * Options for constructing CodexAgentService (dependency injection)
@@ -61,6 +62,14 @@ interface CodexAgentServiceOptions {
 }
 
 type CodexAuthMode = 'oauth' | 'api_key' | 'auto';
+
+function normalizeCodexModel(model: string): string {
+  const normalized = model.trim();
+  // The bare `codex` alias can resolve inside the CLI, but on current
+  // Windows installs it frequently downgrades into fallback metadata and
+  // produces warning-only turns during resume. Prefer an explicit model.
+  return normalized === 'codex' ? 'gpt-5.4' : normalized;
+}
 
 function getCodexAuthMode(callbackEnv?: Record<string, string>): CodexAuthMode {
   const raw = callbackEnv?.CODEX_AUTH_MODE?.trim().toLowerCase() ?? process.env.CODEX_AUTH_MODE?.trim().toLowerCase();
@@ -225,7 +234,7 @@ export class CodexAgentService implements AgentService {
   constructor(options?: CodexAgentServiceOptions) {
     this.catId = options?.catId ?? createCatId('codex');
     this.spawnFn = options?.spawnFn;
-    this.model = options?.model ?? getCatModel(this.catId as string);
+    this.model = normalizeCodexModel(options?.model ?? getCatModel(this.catId as string));
     this.auditLog = options?.auditLog ?? getEventAuditLog();
     this.rawArchive = options?.rawArchive ?? new CliRawArchive();
     this.contextSnapshotResolver = options?.contextSnapshotResolver ?? createCodexSessionContextSnapshotResolver();
@@ -234,7 +243,7 @@ export class CodexAgentService implements AgentService {
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
     // Codex CLI has no system prompt flag; prepend identity to prompt text
     const effectivePrompt = options?.systemPrompt ? `${options.systemPrompt}\n\n${prompt}` : prompt;
-    const effectiveModel = options?.callbackEnv?.CAT_CAFE_OPENAI_MODEL_OVERRIDE ?? this.model;
+    const effectiveModel = normalizeCodexModel(options?.callbackEnv?.CAT_CAFE_OPENAI_MODEL_OVERRIDE ?? this.model);
     const imagePaths = extractImagePaths(options?.contentBlocks, options?.uploadDir);
     const imageArgs = imagePaths.flatMap((path) => ['--image', path]);
 
@@ -244,7 +253,10 @@ export class CodexAgentService implements AgentService {
     const effortLevel = getCatEffort(this.catId as string);
     const reasoningArgs = ['--config', `model_reasoning_effort="${effortLevel}"`];
     const approvalArgs = ['--config', `approval_policy="${approvalPolicy}"`];
-    const catCafeMcpArgs = buildCatCafeMcpConfigArgs(options?.workingDirectory, options?.callbackEnv);
+    // Windows local CLI auth is more reliable when Codex replies directly over stdout.
+    // Keep MCP callback wiring for non-Windows, but avoid injecting it on Windows so
+    // main-page chat remains interactive even when callback/MCP handoff is flaky.
+    const catCafeMcpArgs = IS_WINDOWS ? [] : buildCatCafeMcpConfigArgs(options?.workingDirectory, options?.callbackEnv);
     const gitRepoArgs = buildGitRepoArgs(options?.workingDirectory);
     // User-defined CLI args from the member editor — passed as-is, no implicit wrapping.
     // Each entry is split by whitespace (e.g. "--config model_reasoning_effort=\"low\"").
