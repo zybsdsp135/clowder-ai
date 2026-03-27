@@ -491,6 +491,45 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.match(patchBody.error, /provider "claude-oauth" not found/i);
   });
 
+  it('PATCH /api/cats/:id switches the default CLI when changing client without an explicit cli patch', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/cats/opus',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        client: 'openai',
+        accountRef: 'codex',
+        defaultModel: 'gpt-5.4',
+      }),
+    });
+
+    assert.equal(patchRes.statusCode, 200);
+    const patchBody = JSON.parse(patchRes.body);
+    assert.equal(patchBody.cat.provider, 'openai');
+    assert.equal(patchBody.cat.accountRef, 'codex');
+    assert.equal(patchBody.cat.defaultModel, 'gpt-5.4');
+
+    const catalog = JSON.parse(readFileSync(join(projectRoot, '.cat-cafe', 'cat-catalog.json'), 'utf-8'));
+    const ragdoll = catalog.breeds.find((breed) => breed.id === 'ragdoll');
+    assert.ok(ragdoll, 'ragdoll breed should exist in runtime catalog');
+    const opusVariant = ragdoll.variants.find((variant) => variant.id === 'opus-default');
+    assert.ok(opusVariant, 'opus-default variant should exist in runtime catalog');
+    assert.equal(opusVariant.provider, 'openai');
+    assert.deepEqual(opusVariant.cli, { command: 'codex', outputFormat: 'json' });
+  });
+
   it('POST /api/cats allows api_key bindings with different protocol than client default', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');

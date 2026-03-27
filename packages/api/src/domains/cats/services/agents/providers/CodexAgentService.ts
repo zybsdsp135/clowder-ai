@@ -61,11 +61,28 @@ interface CodexAgentServiceOptions {
 }
 
 type CodexAuthMode = 'oauth' | 'api_key' | 'auto';
+type CodexReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 
 function getCodexAuthMode(callbackEnv?: Record<string, string>): CodexAuthMode {
   const raw = callbackEnv?.CODEX_AUTH_MODE?.trim().toLowerCase();
   if (raw === 'api_key' || raw === 'auto' || raw === 'oauth') return raw;
   return 'oauth';
+}
+
+function normalizeCodexReasoningEffort(raw: string): CodexReasoningEffort {
+  switch (raw) {
+    case 'none':
+    case 'minimal':
+    case 'low':
+    case 'medium':
+    case 'high':
+    case 'xhigh':
+      return raw;
+    case 'max':
+      return 'xhigh';
+    default:
+      return 'high';
+  }
 }
 
 function applyAuthMode(env: Record<string, string>, authMode: CodexAuthMode): Record<string, string | null> {
@@ -241,7 +258,7 @@ export class CodexAgentService implements AgentService {
     const sandboxMode = getCodexSandboxMode();
     const approvalPolicy = getCodexApprovalPolicy();
     const modelArgs = ['--model', effectiveModel];
-    const effortLevel = getCatEffort(this.catId as string);
+    const effortLevel = normalizeCodexReasoningEffort(getCatEffort(this.catId as string));
     const reasoningArgs = ['--config', `model_reasoning_effort="${effortLevel}"`];
     const approvalArgs = ['--config', `approval_policy="${approvalPolicy}"`];
     const catCafeMcpArgs = buildCatCafeMcpConfigArgs(options?.workingDirectory, options?.callbackEnv);

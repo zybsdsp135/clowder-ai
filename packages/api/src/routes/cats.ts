@@ -552,14 +552,21 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
     try {
       const hasCommandArgsPatch = body.commandArgs !== undefined;
       const nextCommandArgs = body.commandArgs ?? [];
+      const nextClient = body.client;
+      const isClientSwitch = nextClient !== undefined && nextClient !== currentCat.provider;
       const antigravityCliPatch =
-        body.client === 'antigravity' || (currentCat.provider === 'antigravity' && hasCommandArgsPatch)
+        nextClient === 'antigravity' ||
+        (currentCat.provider === 'antigravity' && hasCommandArgsPatch && !isClientSwitch)
           ? {
               cli: {
                 ...defaultCliForClient('antigravity'),
                 ...(hasCommandArgsPatch && nextCommandArgs.length > 0 ? { defaultArgs: nextCommandArgs } : {}),
               },
             }
+          : {};
+      const switchedClientDefaultCliPatch =
+        isClientSwitch && nextClient !== undefined && nextClient !== 'antigravity' && body.cli === undefined
+          ? { cli: defaultCliForClient(nextClient) }
           : {};
       updateRuntimeCat(projectRoot, request.params.id, {
         ...(body.name !== undefined ? { name: body.name } : {}),
@@ -586,6 +593,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
             }
           : {}),
         ...(!hasCommandArgsPatch ? antigravityCliPatch : {}),
+        ...switchedClientDefaultCliPatch,
         ...(body.cli !== undefined ? { cli: body.cli } : {}),
         ...(body.available !== undefined ? { available: body.available } : {}),
         ...(body.cliConfigArgs !== undefined ? { cliConfigArgs: body.cliConfigArgs } : {}),
