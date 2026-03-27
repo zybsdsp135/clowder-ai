@@ -125,6 +125,7 @@ import {
   messageActionsRoutes,
   messagesRoutes,
   packsRoutes,
+  poetryRoutes,
   projectsRoutes,
   providerProfilesRoutes,
   pushRoutes,
@@ -860,6 +861,8 @@ async function main(): Promise<void> {
   const connectorHubOpts: Parameters<typeof connectorHubRoutes>[1] = { threadStore };
   await app.register(connectorHubRoutes, connectorHubOpts);
   await app.register(brakeRoutes, { activityTracker });
+  const { PoetryStore } = await import('./domains/poetry/PoetryStore.js');
+  await app.register(poetryRoutes, { poetryStore: new PoetryStore(memoryServices.store.getDb()) });
 
   // F101: Game routes (store created earlier for /game command interception)
   if (f101GameStore) {

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { useChatStore } from '@/stores/chatStore';
 import { ExportButton } from './ExportButton';
 import { HubButton } from './HubButton';
+import { PoetryButton } from './PoetryButton';
 import { CatCafeLogo } from './icons/CatCafeLogo';
 import { VoiceCompanionButton } from './VoiceCompanionButton';
 
@@ -57,6 +58,7 @@ export function ChatContainerHeader({
           <ThreadIndicator threadId={threadId} />
         </div>
         <ExportButton threadId={threadId} />
+        <PoetryButton />
         <VoiceCompanionButton threadId={threadId} defaultCatId={defaultCatId} />
         <Link
           href={`/signals?from=${encodeURIComponent(threadId)}`}

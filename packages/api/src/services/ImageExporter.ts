@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
 import puppeteer, { type Browser } from 'puppeteer';
 import sharp from 'sharp';
 import { createModuleLogger } from '../infrastructure/logger.js';
@@ -7,6 +9,7 @@ const log = createModuleLogger('image-exporter');
 /** Chunk height for scroll-and-stitch. 4000px is well under Chrome's ~16384 GPU limit. */
 const CHUNK_HEIGHT = 4000;
 const VIEWPORT_WIDTH = 1280;
+const USERSPACE_CHROME_LIB_DIR = `${homedir()}/.local/share/puppeteer-deps/root/usr/lib/x86_64-linux-gnu`;
 
 /**
  * ImageExporter service for capturing screenshots of web pages using Chrome headless.
@@ -24,8 +27,10 @@ export class ImageExporter {
   async capture(url: string, userId: string): Promise<Buffer> {
     try {
       if (!this.browser) {
+        const launchEnv = this.resolveLaunchEnv();
         this.browser = await puppeteer.launch({
           headless: true,
+          env: launchEnv,
           args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         });
       }
@@ -142,6 +147,24 @@ export class ImageExporter {
           ),
         ),
     );
+  }
+
+  private resolveLaunchEnv(): NodeJS.ProcessEnv {
+    if (!existsSync(USERSPACE_CHROME_LIB_DIR)) {
+      return process.env;
+    }
+
+    const current = process.env.LD_LIBRARY_PATH?.trim();
+    const paths = current
+      ? [USERSPACE_CHROME_LIB_DIR, ...current.split(':').filter(Boolean)]
+      : [USERSPACE_CHROME_LIB_DIR];
+    const libraryPath = Array.from(new Set(paths)).join(':');
+
+    log.info({ libraryPath }, 'Using userspace Chrome runtime libraries for export');
+    return {
+      ...process.env,
+      LD_LIBRARY_PATH: libraryPath,
+    };
   }
 
   async close() {
