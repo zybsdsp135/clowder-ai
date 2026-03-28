@@ -11,6 +11,7 @@ export type CodexApprovalPolicy = (typeof CODEX_APPROVAL_POLICIES)[number];
 
 export const DEFAULT_CODEX_SANDBOX_MODE: CodexSandboxMode = 'danger-full-access';
 export const DEFAULT_CODEX_APPROVAL_POLICY: CodexApprovalPolicy = 'on-request';
+export const DEFAULT_CODEX_DISTINCT_PERSONAS = true;
 
 function parseEnum<T extends readonly string[]>(raw: string | undefined, valid: T, fallback: T[number]): T[number] {
   if (!raw) return fallback;
@@ -25,4 +26,10 @@ export function getCodexSandboxMode(env: NodeJS.ProcessEnv = process.env): Codex
 
 export function getCodexApprovalPolicy(env: NodeJS.ProcessEnv = process.env): CodexApprovalPolicy {
   return parseEnum(env.CAT_CODEX_APPROVAL_POLICY, CODEX_APPROVAL_POLICIES, DEFAULT_CODEX_APPROVAL_POLICY);
+}
+
+export function isCodexDistinctPersonasEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env.CAT_CODEX_DISTINCT_PERSONAS?.trim().toLowerCase();
+  if (!raw) return DEFAULT_CODEX_DISTINCT_PERSONAS;
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 }

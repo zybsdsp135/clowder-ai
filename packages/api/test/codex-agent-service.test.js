@@ -225,6 +225,72 @@ test('does not add --skip-git-repo-check inside a git repository', async () => {
   assert.ok(!args.includes('--skip-git-repo-check'));
 });
 
+test('non-maine-coon Codex cats use a neutral cwd to avoid repo AGENTS identity bleed', async () => {
+  const proc = createMockProcess();
+  const calls = [];
+  const spawnFn = (...args) => {
+    calls.push(args);
+    return proc;
+  };
+  const service = new CodexAgentService({ spawnFn, model: 'gpt-5.4', catId: 'opus' });
+  const repoRoot = mkdtempSync(join('/tmp', 'codex-neutral-root-'));
+  const workingDirectory = join(repoRoot, 'packages', 'api');
+
+  try {
+    mkdirSync(workingDirectory, { recursive: true });
+    writeFileSync(join(repoRoot, '.git'), 'gitdir: /tmp/example\n', 'utf8');
+
+    const promise = collect(service.invoke('hello', { workingDirectory }));
+    emitCodexEvents(proc, [{ type: 'thread.started', thread_id: 't-neutral-root' }]);
+    await promise;
+
+    const args = calls[0][1];
+    const opts = calls[0][2];
+    const addDirIndexes = args
+      .map((arg, index) => (arg === '--add-dir' ? index : -1))
+      .filter((index) => index >= 0);
+    const addDirValues = addDirIndexes.map((index) => args[index + 1]);
+    assert.notEqual(opts.cwd, workingDirectory);
+    assert.match(opts.cwd, /\/tmp\/cat-cafe-codex-roots\/opus\//);
+    assert.ok(addDirValues.includes(workingDirectory), 'must keep project directory writable');
+    assert.ok(addDirValues.includes(repoRoot), 'must keep repository root writable');
+    assert.ok(addDirValues.includes(join(repoRoot, '.git')), 'must keep .git writable for git operations');
+    assert.ok(args.includes('--skip-git-repo-check'));
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test('maine-coon Codex cats keep the project cwd and legacy .git add-dir behavior', async () => {
+  const proc = createMockProcess();
+  const calls = [];
+  const spawnFn = (...args) => {
+    calls.push(args);
+    return proc;
+  };
+  const service = new CodexAgentService({ spawnFn, model: 'gpt-5.4', catId: 'codex' });
+  const repoRoot = mkdtempSync(join('/tmp', 'codex-maine-root-'));
+  const workingDirectory = join(repoRoot, 'packages', 'api');
+
+  try {
+    mkdirSync(workingDirectory, { recursive: true });
+    writeFileSync(join(repoRoot, '.git'), 'gitdir: /tmp/example\n', 'utf8');
+
+    const promise = collect(service.invoke('hello', { workingDirectory }));
+    emitCodexEvents(proc, [{ type: 'thread.started', thread_id: 't-maine-root' }]);
+    await promise;
+
+    const args = calls[0][1];
+    const opts = calls[0][2];
+    assert.equal(opts.cwd, workingDirectory);
+    const gitAddDirIndex = args.indexOf('--add-dir');
+    assert.ok(gitAddDirIndex >= 0);
+    assert.equal(args[gitAddDirIndex + 1], '.git');
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
 test('isGitRepositoryPath walks parent directories instead of shelling out to git', () => {
   const root = mkdtempSync(join('/tmp', 'codex-git-marker-'));
   const nestedDir = join(root, 'packages', 'api');

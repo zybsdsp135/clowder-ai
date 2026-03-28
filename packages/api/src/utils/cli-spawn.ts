@@ -15,11 +15,14 @@ const log = createModuleLogger('cli-spawn');
 
 const IS_WINDOWS = process.platform === 'win32';
 
-type CliErrorReasonCode = 'invalid_thinking_signature';
+type CliErrorReasonCode = 'invalid_thinking_signature' | 'invalid_session_identifier';
 
 function classifyKnownCliStderr(stderr: string): CliErrorReasonCode | undefined {
   if (/Invalid [`'"]?signature[`'"]? in [`'"]?thinking[`'"]? block/i.test(stderr)) {
     return 'invalid_thinking_signature';
+  }
+  if (/Invalid session identifier/i.test(stderr)) {
+    return 'invalid_session_identifier';
   }
   return undefined;
 }

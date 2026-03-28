@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import puppeteer, { type Browser } from 'puppeteer';
 import sharp from 'sharp';
@@ -10,6 +11,16 @@ const log = createModuleLogger('image-exporter');
 const CHUNK_HEIGHT = 4000;
 const VIEWPORT_WIDTH = 1280;
 const USERSPACE_CHROME_LIB_DIR = `${homedir()}/.local/share/puppeteer-deps/root/usr/lib/x86_64-linux-gnu`;
+const EXPORT_FONT_DIR = `${homedir()}/.local/share/fonts/cat-cafe-export`;
+const EXPORT_FONT_CANDIDATES = [
+  { family: 'CatCafeExportZh', path: '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', linkName: 'NotoSansCJK-Regular.ttc' },
+  { family: 'CatCafeExportZh', path: '/usr/share/fonts/opentype/noto/NotoSansCJKSC-Regular.otf', linkName: 'NotoSansCJKSC-Regular.otf' },
+  { family: 'CatCafeExportZh', path: '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc', linkName: 'NotoSansCJK-Regular-alt.ttc' },
+  { family: 'CatCafeExportZh', path: '/mnt/c/Windows/Fonts/msyh.ttc', linkName: 'msyh.ttc' },
+  { family: 'CatCafeExportZh', path: '/mnt/c/Windows/Fonts/msyhbd.ttc', linkName: 'msyhbd.ttc' },
+  { family: 'CatCafeExportZh', path: '/mnt/c/Windows/Fonts/msyhl.ttc', linkName: 'msyhl.ttc' },
+  { family: 'CatCafeExportZh', path: '/mnt/c/Windows/Fonts/simhei.ttf', linkName: 'simhei.ttf' },
+] as const;
 
 /**
  * ImageExporter service for capturing screenshots of web pages using Chrome headless.
@@ -27,6 +38,7 @@ export class ImageExporter {
   async capture(url: string, userId: string): Promise<Buffer> {
     try {
       if (!this.browser) {
+        this.ensureExportFontsAvailable();
         const launchEnv = this.resolveLaunchEnv();
         this.browser = await puppeteer.launch({
           headless: true,
@@ -48,6 +60,8 @@ export class ImageExporter {
         waitUntil: 'networkidle2',
         timeout: 30000,
       });
+
+      await this.injectExportFonts(page);
 
       // Wait for messages to render (export mode uses flow layout, no data-chat-container)
       await page.waitForSelector('[data-message-id]', { timeout: 15000 });
@@ -132,6 +146,90 @@ export class ImageExporter {
       return stitched;
     } catch (error) {
       throw new Error(`Screenshot capture failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async injectExportFonts(page: puppeteer.Page): Promise<void> {
+    const availableFonts = EXPORT_FONT_CANDIDATES.filter((font) => existsSync(font.path));
+    if (availableFonts.length === 0) {
+      log.warn('No export CJK font candidates found; screenshots may render tofu for Chinese text');
+      return;
+    }
+
+    const fontFaces = availableFonts
+      .map(
+        (font) => `
+@font-face {
+  font-family: '${font.family}';
+  src: url('file://${font.path}') format('truetype');
+  font-display: swap;
+}`,
+      )
+      .join('\n');
+
+    await page.addStyleTag({
+      content: `
+${fontFaces}
+
+html,
+body,
+button,
+input,
+textarea,
+select,
+[data-message-id],
+[data-message-id] * {
+  font-family:
+    'CatCafeExportZh',
+    'Microsoft YaHei',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Noto Sans CJK SC',
+    'WenQuanYi Micro Hei',
+    sans-serif !important;
+}
+`,
+    });
+
+    await page.evaluate(async () => {
+      const fonts = (globalThis as { document?: { fonts?: { ready: Promise<unknown> } } }).document?.fonts;
+      if (fonts) {
+        await fonts.ready;
+      }
+    });
+  }
+
+  private ensureExportFontsAvailable(): void {
+    const availableFonts = EXPORT_FONT_CANDIDATES.filter((font) => existsSync(font.path));
+    if (availableFonts.length === 0) {
+      return;
+    }
+
+    mkdirSync(EXPORT_FONT_DIR, { recursive: true });
+
+    for (const font of availableFonts) {
+      const linkPath = `${EXPORT_FONT_DIR}/${font.linkName}`;
+      try {
+        if (existsSync(linkPath)) {
+          const currentTarget = realpathSync(linkPath);
+          if (currentTarget === font.path) {
+            continue;
+          }
+          rmSync(linkPath, { force: true });
+        }
+        symlinkSync(font.path, linkPath);
+      } catch (error) {
+        log.warn(
+          { linkPath, sourcePath: font.path, error: error instanceof Error ? error.message : String(error) },
+          'Failed to link export font candidate',
+        );
+      }
+    }
+
+    try {
+      execFileSync('fc-cache', ['-f', EXPORT_FONT_DIR], { stdio: 'ignore' });
+    } catch (error) {
+      log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Failed to refresh font cache');
     }
   }
 

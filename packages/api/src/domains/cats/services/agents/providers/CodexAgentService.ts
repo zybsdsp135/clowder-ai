@@ -15,7 +15,8 @@
  *   turn.started / turn.completed / 其余 item 事件 → 跳过
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, parse, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type CatId, createCatId } from '@cat-cafe/shared';
@@ -227,6 +228,75 @@ function buildGitRepoArgs(workingDirectory?: string): string[] {
   return isGitRepositoryPath(repoCheckDir) ? [] : ['--skip-git-repo-check'];
 }
 
+function findGitRepositoryRoot(workingDirectory: string): string | undefined {
+  let current = resolve(workingDirectory);
+  while (true) {
+    if (existsSync(join(current, '.git'))) {
+      return current;
+    }
+
+    const root = parse(current).root;
+    if (current === root) {
+      return undefined;
+    }
+
+    const parent = dirname(current);
+    if (parent === current) {
+      return undefined;
+    }
+    current = parent;
+  }
+}
+
+const MAINE_COON_CODEX_IDS = new Set(['codex', 'gpt52', 'spark']);
+
+function shouldBypassRepoAgentIdentity(catId: string): boolean {
+  return !MAINE_COON_CODEX_IDS.has(catId);
+}
+
+function buildNeutralCodexRoot(catId: string, workingDirectory: string): string {
+  const fingerprint = createHash('sha1').update(workingDirectory).digest('hex').slice(0, 12);
+  const root = resolve('/tmp', 'cat-cafe-codex-roots', catId, fingerprint);
+  mkdirSync(root, { recursive: true });
+  return root;
+}
+
+function buildCodexExecutionContext(catId: string, workingDirectory?: string): {
+  cwd?: string;
+  gitRepoArgs: string[];
+  writeDirArgs: string[];
+} {
+  if (!workingDirectory) {
+    return {
+      cwd: undefined,
+      gitRepoArgs: buildGitRepoArgs(undefined),
+      writeDirArgs: ['--add-dir', '.git'],
+    };
+  }
+
+  if (!shouldBypassRepoAgentIdentity(catId)) {
+    return {
+      cwd: workingDirectory,
+      gitRepoArgs: buildGitRepoArgs(workingDirectory),
+      writeDirArgs: ['--add-dir', '.git'],
+    };
+  }
+
+  const repoRoot = findGitRepositoryRoot(workingDirectory);
+  const neutralRoot = buildNeutralCodexRoot(catId, workingDirectory);
+  const writeTargets = new Set<string>([workingDirectory]);
+  if (repoRoot) {
+    writeTargets.add(repoRoot);
+    writeTargets.add(join(repoRoot, '.git'));
+  }
+
+  return {
+    cwd: neutralRoot,
+    gitRepoArgs: ['--skip-git-repo-check'],
+    writeDirArgs: [...writeTargets].flatMap((target) => ['--add-dir', target]),
+  };
+}
+
 /**
  * Service for invoking Codex via CLI subprocess.
  * Uses ChatGPT Plus/Pro subscription instead of API key.
@@ -254,6 +324,7 @@ export class CodexAgentService implements AgentService {
     const effectiveModel = options?.callbackEnv?.CAT_CAFE_OPENAI_MODEL_OVERRIDE ?? this.model;
     const imagePaths = extractImagePaths(options?.contentBlocks, options?.uploadDir);
     const imageArgs = imagePaths.flatMap((path) => ['--image', path]);
+    const executionContext = buildCodexExecutionContext(this.catId as string, options?.workingDirectory);
 
     const sandboxMode = getCodexSandboxMode();
     const approvalPolicy = getCodexApprovalPolicy();
@@ -262,7 +333,7 @@ export class CodexAgentService implements AgentService {
     const reasoningArgs = ['--config', `model_reasoning_effort="${effortLevel}"`];
     const approvalArgs = ['--config', `approval_policy="${approvalPolicy}"`];
     const catCafeMcpArgs = buildCatCafeMcpConfigArgs(options?.workingDirectory, options?.callbackEnv);
-    const gitRepoArgs = buildGitRepoArgs(options?.workingDirectory);
+    const gitRepoArgs = executionContext.gitRepoArgs;
     // User-defined CLI args from the member editor — passed as-is, no implicit wrapping.
     // Each entry is split by whitespace (e.g. "--config model_reasoning_effort=\"low\"").
     const userConfigArgs = (options?.cliConfigArgs ?? []).flatMap((arg) => arg.trim().split(/\s+/));
@@ -318,8 +389,7 @@ export class CodexAgentService implements AgentService {
           ...reasoningArgs,
           '--sandbox',
           sandboxMode,
-          '--add-dir',
-          '.git',
+          ...executionContext.writeDirArgs,
           ...approvalArgs,
           ...customProviderArgs,
           ...userConfigArgs,
@@ -376,7 +446,7 @@ export class CodexAgentService implements AgentService {
       const cliOpts = {
         command: codexCommand,
         args,
-        ...(options?.workingDirectory ? { cwd: options.workingDirectory } : {}),
+        ...(executionContext.cwd ? { cwd: executionContext.cwd } : {}),
         env: codexEnv,
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),

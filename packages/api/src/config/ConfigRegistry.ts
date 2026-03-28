@@ -11,7 +11,7 @@ import { DEFAULT_CLI_TIMEOUT_MS, readCliTimeoutMsFromEnv } from '../utils/cli-ti
 import { getAllCatBudgets } from './cat-budgets.js';
 import { getCoCreatorConfig } from './cat-config-loader.js';
 import { getCatModel } from './cat-models.js';
-import { getCodexApprovalPolicy, getCodexSandboxMode } from './codex-cli.js';
+import { getCodexApprovalPolicy, getCodexSandboxMode, isCodexDistinctPersonasEnabled } from './codex-cli.js';
 import type { CodexAuthMode, ConfigSnapshot } from './config-snapshot.js';
 import { parseBoolean, parseEnum } from './parse-utils.js';
 
@@ -91,6 +91,7 @@ export function collectConfigSnapshot(): ConfigSnapshot {
   const codexExecutionModel = env.CAT_CODEX_EXEC_MODEL?.trim() || defaultCodexModel;
   const codexExecutionAuthMode = parseEnum<CodexAuthMode>(env.CODEX_AUTH_MODE, ['oauth', 'api_key', 'auto'], 'oauth');
   const codexExecutionPassModelArg = parseBoolean(env.CAT_CODEX_PASS_MODEL_ARG, true);
+  const codexExecutionDistinctPersonas = isCodexDistinctPersonasEnabled(env);
 
   return {
     coCreator: {
@@ -129,6 +130,7 @@ export function collectConfigSnapshot(): ConfigSnapshot {
       model: codexExecutionModel,
       authMode: codexExecutionAuthMode,
       passModelArg: codexExecutionPassModelArg,
+      distinctPersonas: codexExecutionDistinctPersonas,
     },
   };
 }

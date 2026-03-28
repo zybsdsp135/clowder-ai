@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react';
 import type { CatData } from '@/hooks/useCatData';
 import type { ConfigData } from './config-viewer-types';
+import { HubCodexDistinctPersonasSetting } from './HubCodexDistinctPersonasSetting';
 import { HubCoCreatorOverviewCard, HubMemberOverviewCard, HubOverviewToolbar } from './HubMemberOverviewCard';
 
 export type { Capabilities, CatConfig, ConfigData, ContextBudget } from './config-viewer-types';
@@ -85,7 +86,9 @@ export function SystemTab({ config }: { config: ConfigData }) {
             <KV label="Model" value={config.codexExecution.model} />
             <KV label="Auth Mode" value={config.codexExecution.authMode} />
             <KV label="Pass --model Arg" value={config.codexExecution.passModelArg} />
+            <KV label="Distinct Personas" value={config.codexExecution.distinctPersonas} />
           </div>
+          <HubCodexDistinctPersonasSetting initialValue={config.codexExecution.distinctPersonas} />
         </Section>
       ) : null}
       <Section title="治理 & 降级">

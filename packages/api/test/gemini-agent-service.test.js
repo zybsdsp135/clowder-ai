@@ -247,6 +247,24 @@ describe('GeminiAgentService (gemini-cli adapter)', () => {
     assert.ok(!errMsg.error.includes('authentication failed'), 'stderr should be sanitized');
   });
 
+  test('normalizes invalid resume session into a recoverable error message', async () => {
+    const proc = createMockProcess();
+    proc.kill = mock.fn(() => true);
+    const spawnFn = createMockSpawnFn(proc);
+    const service = new GeminiAgentService({ spawnFn, adapter: 'gemini-cli' });
+
+    const promise = collect(service.invoke('resume', { sessionId: 'bad-sess' }));
+
+    proc.stderr.write('Error resuming session: Invalid session identifier "bad-sess".\n');
+    proc.stdout.end();
+    emitProcessExit(proc, 42, null);
+
+    const msgs = await promise;
+    const errMsg = msgs.find((m) => m.type === 'error');
+    assert.ok(errMsg);
+    assert.equal(errMsg.error, 'Gemini CLI: Invalid session identifier');
+  });
+
   test('does not emit duplicate errors when result/error is followed by non-zero exit', async () => {
     const proc = createMockProcess();
     proc.kill = mock.fn(() => true);

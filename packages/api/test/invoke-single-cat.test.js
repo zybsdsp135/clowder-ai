@@ -17,6 +17,19 @@ async function collect(iterable) {
   return msgs;
 }
 
+function ensureTestCat(id, sourceId, overrides = {}) {
+  if (catRegistry.has(id)) return;
+  const source = catRegistry.tryGet(sourceId)?.config;
+  if (!source) throw new Error(`missing source cat config: ${sourceId}`);
+  catRegistry.register(id, {
+    ...source,
+    id,
+    catId: id,
+    mentionPatterns: [`@${id}`],
+    ...overrides,
+  });
+}
+
 // Shared temp dir — singleton EventAuditLog only initializes once
 let tempDir;
 let invokeSingleCat;
@@ -1102,6 +1115,7 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     const { classifyResumeFailure } = await import('../dist/domains/cats/services/agents/invocation/invoke-helpers.js');
 
     assert.equal(classifyResumeFailure('No conversation found with session ID: stale-123'), 'missing_session');
+    assert.equal(classifyResumeFailure('Gemini CLI: Invalid session identifier'), 'missing_session');
     assert.equal(classifyResumeFailure('Gemini CLI: CLI 异常退出 (code: 1, signal: none)'), 'cli_exit');
     assert.equal(classifyResumeFailure('Gemini CLI: CLI 异常退出 (code: null, signal: SIGTERM)'), 'cli_exit');
     assert.equal(classifyResumeFailure('authentication failed: login required'), 'auth');
@@ -2405,44 +2419,52 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     assert.ok(promptsSeen[0].includes('test'), 'F-BLOAT: original prompt should still be present');
   });
 
-  it('F053: Gemini (sessionChain=true) skips systemPrompt on resume like other cats', async () => {
+  it('Codex keeps systemPrompt on resume so persona does not drift cold', async () => {
+    ensureTestCat('test-openai-warm', 'codex', {
+      provider: 'openai',
+      accountRef: 'codex',
+      defaultModel: 'gpt-5.4',
+    });
     const promptsSeen = [];
     const service = {
       async *invoke(prompt, _options) {
         promptsSeen.push(prompt);
-        yield { type: 'text', catId: 'gemini', content: 'hi', timestamp: Date.now() };
-        yield { type: 'done', catId: 'gemini', timestamp: Date.now() };
+        yield { type: 'text', catId: 'test-openai-warm', content: 'hi', timestamp: Date.now() };
+        yield { type: 'done', catId: 'test-openai-warm', timestamp: Date.now() };
       },
     };
 
     const deps = makeDeps();
     deps.sessionManager = {
-      get: async () => 'gemini-sess-123',
+      get: async () => 'codex-sess-123',
       store: async () => {},
       delete: async () => {},
     };
 
     await collect(
       invokeSingleCat(deps, {
-        catId: 'gemini',
+        catId: 'test-openai-warm',
         service,
         prompt: 'test',
-        systemPrompt: 'You are a Siamese cat',
+        systemPrompt: 'You are a Maine Coon cat',
         userId: 'u1',
-        threadId: 'thread-bloat-gemini',
+        threadId: 'thread-bloat-codex',
         isLastCat: true,
       }),
     );
 
-    // F053: Gemini now has sessionChain=true, so on resume it SKIPS
-    // systemPrompt injection (same as Claude/Codex)
     assert.ok(
-      !promptsSeen[0].includes('You are a Siamese cat'),
-      'F053: Gemini should skip systemPrompt on resume (sessionChain=true)',
+      promptsSeen[0].includes('You are a Maine Coon cat'),
+      'Codex should keep systemPrompt on resume so personality stays visible',
     );
   });
 
-  it('F-BLOAT: compression detection flags re-injection when tokens drop >60%', async () => {
+  it('F-BLOAT: compression detection still re-injects for anthropic resume after large compression', async () => {
+    ensureTestCat('test-anthropic-compress', 'opus', {
+      provider: 'anthropic',
+      accountRef: 'claude',
+      defaultModel: 'claude-opus-4-6',
+    });
     // Reset compression detection state
     const mod = await import('../dist/domains/cats/services/agents/invocation/invoke-single-cat.js');
     mod._resetCompressionDetection();
@@ -2453,15 +2475,15 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       async *invoke(prompt, _options) {
         promptsSeen.push(prompt);
         callNum++;
-        yield { type: 'session_init', catId: 'codex', sessionId: 'sess-compress', timestamp: Date.now() };
-        yield { type: 'text', catId: 'codex', content: `answer-${callNum}`, timestamp: Date.now() };
+        yield { type: 'session_init', catId: 'test-anthropic-compress', sessionId: 'sess-compress', timestamp: Date.now() };
+        yield { type: 'text', catId: 'test-anthropic-compress', content: `answer-${callNum}`, timestamp: Date.now() };
         yield {
           type: 'done',
-          catId: 'codex',
+          catId: 'test-anthropic-compress',
           timestamp: Date.now(),
           metadata: {
-            provider: 'openai',
-            model: 'gpt-5.3-codex',
+            provider: 'anthropic',
+            model: 'claude-opus-4-6',
             usage: {
               inputTokens: callNum === 1 ? 60000 : 15000,
               outputTokens: 1000,
@@ -2489,7 +2511,7 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     // Turn 1: 60k tokens — establishes baseline
     await collect(
       invokeSingleCat(deps, {
-        catId: 'codex',
+        catId: 'test-anthropic-compress',
         service,
         prompt: 'test1',
         systemPrompt: 'Identity prompt',
@@ -2502,7 +2524,7 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     // Turn 2: 15k tokens (75% drop) — should flag re-injection for NEXT turn
     await collect(
       invokeSingleCat(deps, {
-        catId: 'codex',
+        catId: 'test-anthropic-compress',
         service,
         prompt: 'test2',
         systemPrompt: 'Identity prompt',
@@ -2515,7 +2537,7 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     // Turn 3: should have forceReinjection=true → systemPrompt injected despite resume
     await collect(
       invokeSingleCat(deps, {
-        catId: 'codex',
+        catId: 'test-anthropic-compress',
         service,
         prompt: 'test3',
         systemPrompt: 'Identity prompt',
@@ -2525,6 +2547,7 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       }),
     );
 
+    // Anthropic resume still skips by default:
     // Turn 1: resume (sessionId='sess-compress') → systemPrompt skipped
     // Turn 2: resume → systemPrompt skipped (compression detected AFTER this turn)
     // Turn 3: resume + forceReinjection → systemPrompt re-prepended

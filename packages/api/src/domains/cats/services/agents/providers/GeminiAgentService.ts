@@ -171,10 +171,15 @@ export class GeminiAgentService implements AgentService {
         }
         if (isCliError(event)) {
           if (sawResultError || suppressCliExitError) continue;
+          const normalizedError =
+            event.reasonCode === 'invalid_session_identifier' ||
+            (options?.sessionId != null && event.exitCode === 42 && event.signal == null)
+              ? 'Gemini CLI: Invalid session identifier'
+              : formatCliExitError('Gemini CLI', event);
           yield {
             type: 'error',
             catId: this.catId,
-            error: formatCliExitError('Gemini CLI', event),
+            error: normalizedError,
             metadata,
             timestamp: Date.now(),
           };

@@ -770,11 +770,10 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       if (resolvedAccount.baseUrl) callbackEnv[OC_BASE_URL_ENV] = resolvedAccount.baseUrl;
     }
 
-    // F-BLOAT: Only inject staticIdentity (systemPrompt) on new sessions for cats
-    // that support persistent sessions (sessionChain=true).
-    // Cats with sessionChain=false always need it — each turn is effectively new.
-    // Note: As of F053, all cats (including Gemini) have sessionChain=true.
-    // Exception: compression detected → force re-inject (see _needsReinjection)
+    // F-BLOAT: Anthropic-style sessions can usually carry persona forward, so we
+    // skip staticIdentity on resume unless compression/self-heal says otherwise.
+    // OpenAI/Google CLI sessions tend to drift into terse tool-mode over time, so
+    // keep identity/personality injected on every turn to preserve cat warmth.
     //
     // Injection method: prepend to prompt string (universal, all CLIs).
     // --append-system-prompt proved unreliable (cats didn't receive content).
@@ -784,14 +783,16 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     const canSkipOnResume = isSessionChainEnabled(catId);
     const compressionKey = `${userId}:${catId as string}:${threadId}`;
     const forceReinjection = _needsReinjection.delete(compressionKey);
-    const injectSystemPrompt = !canSkipOnResume || !isResume || forceReinjection;
+    const providerNeedsPerTurnIdentity = effectiveProtocol === 'openai' || effectiveProtocol === 'google';
+    const injectSystemPrompt =
+      Boolean(params.systemPrompt) &&
+      (providerNeedsPerTurnIdentity || !canSkipOnResume || !isResume || forceReinjection);
 
     // Prepend staticIdentity to prompt when injection is needed
     // F070-P2: missionPrefix (dispatch context) is prepended for external projects
     const promptWithMission = missionPrefix ? `${missionPrefix}\n\n${prompt}` : prompt;
     const effectivePrompt =
-      injectSystemPrompt && params.systemPrompt
-        ? `${params.systemPrompt}\n\n---\n\n${promptWithMission}`
+      injectSystemPrompt ? `${params.systemPrompt}\n\n---\n\n${promptWithMission}`
         : promptWithMission;
 
     // F089 Phase 2+3: Create tmux spawn override for agent-in-pane execution

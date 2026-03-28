@@ -30,6 +30,12 @@ const CONFIG: ConfigData & {
   a2a: { enabled: true, maxDepth: 2 },
   memory: { enabled: true, maxKeysPerThread: 50 },
   governance: { degradationEnabled: true, doneTimeoutMs: 300000, heartbeatIntervalMs: 30000 },
+  codexExecution: {
+    model: 'gpt-5.3-codex',
+    authMode: 'oauth',
+    passModelArg: true,
+    distinctPersonas: true,
+  },
 };
 
 const CATS: CatData[] = [
@@ -177,11 +183,13 @@ describe('SystemTab', () => {
         model: 'gpt-5.3-codex',
         authMode: 'oauth',
         passModelArg: true,
+        distinctPersonas: true,
       },
     } as unknown as ConfigData;
 
     const html = renderToStaticMarkup(React.createElement(SystemTab, { config: nextConfig }));
     expect(html).toContain('gpt-5.3-codex');
     expect(html).toContain('oauth');
+    expect(html).toContain('Distinct Personas');
   });
 });
