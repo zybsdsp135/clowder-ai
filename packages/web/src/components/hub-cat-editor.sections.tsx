@@ -78,13 +78,13 @@ export function IdentitySection({
               onChange({ name: value, displayName: value, catId: autoSlug(value, form.catId) });
             }}
             required
-            placeholder="成员显示名称，如 我的助手"
+            placeholder="成员展示名，例如 缅因猫砚砚"
           />
           <input type="hidden" aria-label="Cat ID" value={form.catId} />
         </>
       ) : (
         <TextField
-          label="名称"
+            label="名称"
           ariaLabel="Name"
           value={form.name}
           onChange={(value) => onChange({ name: value, displayName: value })}
@@ -96,7 +96,7 @@ export function IdentitySection({
         ariaLabel="Nickname"
         value={form.nickname}
         onChange={(value) => onChange({ nickname: value })}
-        placeholder="可选，铲屎官给的昵称"
+        placeholder="可选，例如 铲屎官昵称"
       />
       <TextField
         label="角色描述"
@@ -104,7 +104,7 @@ export function IdentitySection({
         value={form.roleDescription}
         onChange={(value) => onChange({ roleDescription: value })}
         required
-        placeholder="角色定位，如 代码审查专家"
+        placeholder="角色定位，例如 代码审查专家"
       />
 
       <div className="flex items-center gap-3">
@@ -124,7 +124,7 @@ export function IdentitySection({
               </svg>
             )}
           </div>
-          <span>{avatarUploading ? '上传中…' : '点击上传'}</span>
+          <span>{avatarUploading ? '上传中...' : '点击更换头像'}</span>
         </button>
         <input
           ref={fileInputRef}
@@ -176,21 +176,21 @@ export function IdentitySection({
         ariaLabel="Team Strengths"
         value={form.teamStrengths}
         onChange={(value) => onChange({ teamStrengths: value })}
-        placeholder="如 架构设计、安全分析"
+        placeholder="例如 后端架构、并发、代码审查"
       />
       <TextField
         label="性格特征"
         ariaLabel="Personality"
         value={form.personality}
         onChange={(value) => onChange({ personality: value })}
-        placeholder="如 温柔但有主见"
+        placeholder="例如 稳重但有点傲娇"
       />
       <TextField
         label="注意事项"
         ariaLabel="Caution"
         value={form.caution}
         onChange={(value) => onChange({ caution: value })}
-        placeholder="可选，留空表示无特殊注意"
+        placeholder="可选，例如 容易把话说得太满"
       />
 
       <div className="flex items-start gap-3">
@@ -199,9 +199,9 @@ export function IdentitySection({
           <TagEditor
             tags={strengthTags}
             onChange={(tags) => onChange({ strengths: joinTags(tags) })}
-            addLabel="+ 选择"
+            addLabel="+ 添加"
             placeholder="输入标签，例如 security"
-            emptyLabel="(无)"
+            emptyLabel="(暂无)"
           />
         </div>
         <input
@@ -214,7 +214,7 @@ export function IdentitySection({
 
       <div className="rounded-[10px] border border-dashed border-[#DCC9B8] bg-[#F7F3F0] px-3 py-2">
         <p className="text-[13px] font-semibold text-[#8A776B]">▸ Voice Config (点击展开)</p>
-        <p className="mt-0.5 text-[11px] leading-4 text-[#B59A88]">需对接和启用语音功能后才支持配置</p>
+        <p className="mt-0.5 text-[11px] leading-4 text-[#B59A88]">越自然的语音描述，越容易帮用户建立鲜明印象。</p>
       </div>
     </SectionCard>
   );
@@ -222,8 +222,6 @@ export function IdentitySection({
 
 /** Well-known OpenCode provider names (always shown as suggestions). */
 const KNOWN_OC_PROVIDERS = ['anthropic', 'openai', 'openrouter', 'google', 'azure', 'deepseek'];
-
-/** Merge well-known providers with any prefixes extracted from model strings like "openai/gpt-5.4". */
 function buildProviderSuggestions(models: string[]): string[] {
   const seen = new Set<string>(KNOWN_OC_PROVIDERS);
   for (const m of models) {
@@ -278,7 +276,7 @@ function ComboField({
 
 // Derive the opencode endpoint suffix from protocol / ocProviderName.
 // Priority mirrors backend deriveOpenCodeApiType: protocol > ocProviderName > default.
-// Note: model prefix (e.g. google/gemini-*) is NOT used — it can be a namespace
+  // Note: model prefix (e.g. google/gemini-*) is NOT used - it can be a namespace
 // within a different provider (e.g. OpenRouter) and would produce misleading hints.
 function resolveOpenCodeEndpoint(protocol: string | undefined, ocProviderName: string): string {
   // Explicit protocol always wins (same as deriveOpenCodeApiType)
@@ -325,7 +323,7 @@ function buildCallHint(
   const fullUrl = `${effectiveBase}${info.pathSuffix}`;
   let warning = '';
   if (client === 'google') {
-    warning = `\n注意: Gemini CLI 不支持自定义 API 端点，只能调用 Google 官方 API。如需使用第三方代理（如 OpenRouter），请改用 OpenCode 或 Claude 作为 Client`;
+    warning = `\n注意：Gemini CLI 不支持自定义 API 端点，只能调用 Google 官方 API。如果你要用 OpenRouter 等自定义网关，请改用 OpenCode 或 Claude 作为 Client`
   }
   return `${info.cli} CLI 实际调用: ${fullUrl}${warning}`;
 }
@@ -360,7 +358,13 @@ export function AccountSection({
           label="Client"
           value={form.client}
           options={CLIENT_OPTIONS}
-          onChange={(value) => onChange({ client: value as HubCatEditorFormState['client'], ocProviderName: '' })}
+          onChange={(value) =>
+            onChange({
+              client: value as HubCatEditorFormState['client'],
+              ocProviderName: '',
+              cliConfigArgs: [],
+            })
+          }
           required
         />
 
@@ -371,14 +375,14 @@ export function AccountSection({
               value={form.commandArgs}
               onChange={(value) => onChange({ commandArgs: value })}
               required
-              placeholder="启动命令参数"
+              placeholder="例如 . --remote-debugging-port=9000"
             />
             <TextField
               label="Model"
               value={form.defaultModel}
               onChange={(value) => onChange({ defaultModel: value })}
               required
-              placeholder="模型标识符"
+              placeholder="模型标识"
             />
           </>
         ) : (
@@ -387,10 +391,10 @@ export function AccountSection({
               label="认证信息"
               value={form.accountRef}
               options={[
-                { value: '', label: loadingProfiles ? '加载中…' : '请选择认证方式' },
+                { value: '', label: loadingProfiles ? '加载中...' : '请选择认证方式' },
                 ...accountOptions
                   .filter((profile) => {
-                    // Gemini CLI doesn't support custom API endpoints — only show builtin
+                    // Gemini CLI doesn't support custom API endpoints, only show builtin.
                     if (form.client === 'google' && !profile.builtin) return false;
                     return true;
                   })
@@ -413,7 +417,7 @@ export function AccountSection({
               placeholder={
                 form.client === 'opencode'
                   ? '例如 openai/gpt-5.4 或 openrouter/google/gemini-3-flash-preview'
-                  : '模型标识符，如 claude-sonnet-4-5'
+                  : '模型标识，例如 claude-sonnet-4-5'
               }
             />
             {form.client === 'opencode' && selectedProfile?.authType === 'api_key' ? (
@@ -424,7 +428,7 @@ export function AccountSection({
                 onChange={(value) => onChange({ ocProviderName: value })}
                 suggestions={providerSuggestions}
                 required
-                placeholder="如 anthropic、openai、openrouter、maas"
+                placeholder="例如 anthropic、openai、openrouter、maas"
               />
             ) : null}
             {form.client === 'opencode' &&
@@ -433,7 +437,7 @@ export function AccountSection({
             !form.ocProviderName.trim() ? (
               <div className="rounded-[10px] border border-dashed border-[#DCC9B8] bg-[#F7F3F0] px-3 py-2">
                 <p className="text-[11px] leading-4 text-[#8A776B]">
-                  建议使用 `providerId/modelId` 格式（例如 `openai/gpt-5.4`），部分 provider 需要前缀才能正确路由。
+                  建议使用 `providerId/modelId` 格式，例如 `openai/gpt-5.4`。若 provider 不在模型前缀里，请手动补充 Provider 名称。
                 </p>
               </div>
             ) : null}

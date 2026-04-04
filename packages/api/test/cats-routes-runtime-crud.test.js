@@ -1293,6 +1293,88 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.equal(patchBody.cat.accountRef, sponsorProfile.id);
   });
 
+  it('PATCH /api/cats/:id syncs the default codex CLI and clears stale CLI args when switching a member to OpenAI/Codex', async () => {
+    const projectRoot = createProjectRootFromRepoTemplate();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const { bootstrapCatCatalog } = await import('../dist/config/cat-catalog-store.js');
+    const { createProviderProfile } = await import('./helpers/create-test-account.js');
+    bootstrapCatCatalog(projectRoot, process.env.CAT_TEMPLATE_PATH);
+
+    const sponsorProfile = await createProviderProfile(projectRoot, {
+      displayName: 'Codex Sponsor',
+      authType: 'api_key',
+      protocol: 'openai',
+      baseUrl: 'https://api.codex-sponsor.example',
+      apiKey: 'sk-codex-sponsor',
+      model: 'gpt-5.4',
+    });
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/cats/opus',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        client: 'openai',
+        providerProfileId: sponsorProfile.id,
+        defaultModel: 'gpt-5.4',
+        cliConfigArgs: ['--model', 'claude-sonnet-4-6'],
+        codex: {
+          personaMode: 'strong',
+          identityIsolation: 'neutral-root',
+        },
+      }),
+    });
+
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.body);
+    assert.equal(body.cat.provider, 'openai');
+    assert.equal(body.cat.accountRef, sponsorProfile.id);
+    assert.deepEqual(body.cat.codex, {
+      personaMode: 'strong',
+      identityIsolation: 'neutral-root',
+    });
+
+    const runtimeCatalog = JSON.parse(readFileSync(join(projectRoot, '.cat-cafe', 'cat-catalog.json'), 'utf8'));
+    assert.equal(runtimeCatalog.breeds[0].variants[0].provider, 'openai');
+    assert.equal(runtimeCatalog.breeds[0].variants[0].cli.command, 'codex');
+    assert.equal(runtimeCatalog.breeds[0].variants[0].cli.outputFormat, 'json');
+    assert.deepEqual(runtimeCatalog.breeds[0].variants[0].cliConfigArgs, ['--model', 'claude-sonnet-4-6']);
+    assert.deepEqual(runtimeCatalog.breeds[0].variants[0].codex, {
+      personaMode: 'strong',
+      identityIsolation: 'neutral-root',
+    });
+
+    const clearRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/cats/opus',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        client: 'anthropic',
+        providerProfileId: 'claude',
+        defaultModel: 'claude-opus-4-6',
+      }),
+    });
+
+    assert.equal(clearRes.statusCode, 200);
+    const clearedCatalog = JSON.parse(readFileSync(join(projectRoot, '.cat-cafe', 'cat-catalog.json'), 'utf8'));
+    assert.equal(clearedCatalog.breeds[0].variants[0].provider, 'anthropic');
+    assert.equal(clearedCatalog.breeds[0].variants[0].cli.command, 'claude');
+    assert.equal(clearedCatalog.breeds[0].variants[0].cli.outputFormat, 'stream-json');
+    assert.equal(clearedCatalog.breeds[0].variants[0].cliConfigArgs, undefined);
+  });
+
   it('PATCH /api/cats/:id allows non-provider edits for unbound opencode seed member', async () => {
     if (savedTemplatePath === undefined) {
       delete process.env.CAT_TEMPLATE_PATH;

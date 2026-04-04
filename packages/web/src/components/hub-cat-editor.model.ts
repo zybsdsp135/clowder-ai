@@ -1,4 +1,5 @@
 import type { CatData } from '@/hooks/useCatData';
+import { getDefaultCodexIdentityIsolation, getDefaultCodexPersonaMode } from '@cat-cafe/shared';
 import type { BuiltinAccountClient, ProfileItem } from './hub-provider-profiles.types';
 import type { CatStrategyEntry, StrategyType } from './hub-strategy-types';
 
@@ -7,6 +8,8 @@ export type SessionChainValue = 'true' | 'false';
 export type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
 export type CodexApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never';
 export type CodexAuthMode = 'oauth' | 'api_key' | 'auto';
+export type CodexPersonaMode = 'off' | 'balanced' | 'strong';
+export type CodexIdentityIsolation = 'inherit-repo' | 'neutral-root';
 
 export interface HubCatEditorFormState {
   catId: string;
@@ -28,6 +31,9 @@ export interface HubCatEditorFormState {
   commandArgs: string;
   cliConfigArgs: string[];
   ocProviderName: string;
+  codexPersonaMode?: CodexPersonaMode;
+  codexIdentityIsolation?: CodexIdentityIsolation;
+  codexPersonaPrompt?: string;
   sessionChain: SessionChainValue;
   maxPromptTokens: string;
   maxContextTokens: string;
@@ -79,25 +85,80 @@ export const SESSION_STRATEGY_OPTIONS: Array<{ value: StrategyType; label: strin
 ];
 
 export const CODEX_SANDBOX_OPTIONS: Array<{ value: CodexSandboxMode; label: string }> = [
-  { value: 'read-only', label: 'read-only' },
-  { value: 'workspace-write', label: 'workspace-write' },
-  { value: 'danger-full-access', label: 'danger-full-access' },
+  { value: 'read-only', label: '只读' },
+  { value: 'workspace-write', label: '工作区可写' },
+  { value: 'danger-full-access', label: '完全访问' },
 ];
 
 export const CODEX_APPROVAL_OPTIONS: Array<{ value: CodexApprovalPolicy; label: string }> = [
-  { value: 'untrusted', label: 'untrusted' },
-  { value: 'on-failure', label: 'on-failure' },
-  { value: 'on-request', label: 'on-request' },
-  { value: 'never', label: 'never' },
+  { value: 'untrusted', label: '仅未信任时询问' },
+  { value: 'on-failure', label: '失败时询问' },
+  { value: 'on-request', label: '每次需要时询问' },
+  { value: 'never', label: '不询问' },
 ];
 
 export const CODEX_AUTH_MODE_OPTIONS: Array<{ value: CodexAuthMode; label: string }> = [
-  { value: 'oauth', label: 'oauth' },
-  { value: 'api_key', label: 'api_key' },
-  { value: 'auto', label: 'auto' },
+  { value: 'oauth', label: 'CLI 订阅登录' },
+  { value: 'api_key', label: 'API Key' },
+  { value: 'auto', label: '自动选择' },
+];
+
+export const CODEX_PERSONA_MODE_OPTIONS: Array<{ value: CodexPersonaMode; label: string }> = [
+  { value: 'off', label: '关闭猫味' },
+  { value: 'balanced', label: '平衡' },
+  { value: 'strong', label: '明显保留猫味' },
+];
+
+export const CODEX_IDENTITY_ISOLATION_OPTIONS: Array<{ value: CodexIdentityIsolation; label: string }> = [
+  { value: 'inherit-repo', label: '继承仓库人格' },
+  { value: 'neutral-root', label: '隔离仓库人格' },
 ];
 
 export const DEFAULT_ANTIGRAVITY_COMMAND_ARGS = '. --remote-debugging-port=9000';
+export const DEFAULT_MODEL_BY_CLIENT: Record<ClientValue, string> = {
+  anthropic: 'claude-opus-4-6',
+  openai: 'gpt-5.4',
+  google: 'gemini-3.1-pro-preview',
+  dare: 'z-ai/glm-4.7',
+  opencode: 'anthropic/claude-opus-4-6',
+  antigravity: 'gemini-3.1-pro',
+};
+
+const BUILTIN_ACCOUNT_LABELS: Record<BuiltinAccountClient, string> = {
+  anthropic: 'Claude CLI',
+  openai: 'Codex CLI',
+  google: 'Gemini CLI',
+  dare: 'Dare CLI',
+  opencode: 'OpenCode CLI',
+};
+
+export function syntheticBuiltinAccountProfile(client: ClientValue): ProfileItem | null {
+  if (client === 'opencode') return null;
+  const builtinId = builtinAccountIdForClient(client);
+  if (!builtinId || !isBuiltinClient(client)) return null;
+  return {
+    id: builtinId,
+    provider: builtinId,
+    displayName: BUILTIN_ACCOUNT_LABELS[client],
+    name: BUILTIN_ACCOUNT_LABELS[client],
+    authType: 'oauth',
+    kind: 'builtin',
+    builtin: true,
+    mode: 'subscription',
+    client,
+    models: [DEFAULT_MODEL_BY_CLIENT[client]],
+    hasApiKey: false,
+    createdAt: '',
+    updatedAt: '',
+  };
+}
+
+export function listAccountOptionsForClient(client: ClientValue, profiles: ProfileItem[]): ProfileItem[] {
+  const filtered = filterAccounts(client, profiles);
+  const fallbackProfile = syntheticBuiltinAccountProfile(client);
+  if (!fallbackProfile || filtered.some((profile) => profile.id === fallbackProfile.id)) return filtered;
+  return [fallbackProfile, ...filtered];
+}
 
 export function splitMentionPatterns(raw: string): string[] {
   return raw
@@ -222,7 +283,7 @@ export function filterAccounts(client: ClientValue, profiles: ProfileItem[]): Pr
   const builtinProfiles = profiles.filter(
     (profile) => profile.authType !== 'api_key' && legacyProfileClient(profile) === client,
   );
-  // Gemini CLI only supports builtin Google auth — no API key profiles.
+  // Gemini CLI only supports builtin Google auth, no API key profiles.
   if (client === 'google') return builtinProfiles;
   const apiKeyProfiles = profiles.filter((profile) => profile.authType === 'api_key');
   return [...builtinProfiles, ...apiKeyProfiles.filter((profile) => !builtinProfiles.includes(profile))];
@@ -230,10 +291,18 @@ export function filterAccounts(client: ClientValue, profiles: ProfileItem[]): Pr
 
 export const filterProfiles = filterAccounts;
 
+export function preferredAccountRefForClient(client: ClientValue, profiles: ProfileItem[]): string {
+  const candidates = filterAccounts(client, profiles);
+  const preferredBuiltin = builtinAccountIdForClient(client);
+  if (candidates.length === 0) return preferredBuiltin ?? '';
+  return candidates.find((profile) => profile.id === preferredBuiltin)?.id ?? candidates[0]?.id ?? '';
+}
+
 export function initialState(cat?: CatData | null, draft?: HubCatEditorDraft | null): HubCatEditorFormState {
   const createDraft = !cat ? draft : null;
   const catId = cat?.id ?? '';
   const mentionPatterns = cat?.mentionPatterns ?? (catId ? [canonicalMentionPattern(catId)] : []);
+  const breedId = cat?.breedId;
   return {
     catId,
     name: cat?.name ?? cat?.displayName ?? '',
@@ -249,12 +318,22 @@ export function initialState(cat?: CatData | null, draft?: HubCatEditorDraft | n
     caution: cat?.caution ?? '',
     strengths: cat?.strengths?.join(', ') ?? '',
     client: (cat?.provider as ClientValue | undefined) ?? createDraft?.client ?? 'anthropic',
-    accountRef:
-      cat?.accountRef ?? cat?.providerProfileId ?? createDraft?.accountRef ?? createDraft?.providerProfileId ?? '',
-    defaultModel: cat?.defaultModel ?? createDraft?.defaultModel ?? '',
+    accountRef: cat
+      ? (cat.accountRef ?? cat.providerProfileId ?? '')
+      : (createDraft?.accountRef ??
+        createDraft?.providerProfileId ??
+        (createDraft?.client === 'opencode'
+          ? null
+          : builtinAccountIdForClient(createDraft?.client ?? 'anthropic')) ??
+        ''),
+    defaultModel:
+      cat?.defaultModel ?? createDraft?.defaultModel ?? DEFAULT_MODEL_BY_CLIENT[createDraft?.client ?? 'anthropic'],
     commandArgs: cat?.commandArgs?.join(' ') ?? createDraft?.commandArgs ?? '',
     cliConfigArgs: [...(cat?.cliConfigArgs ?? [])],
     ocProviderName: cat?.ocProviderName ?? '',
+    codexPersonaMode: cat?.codex?.personaMode ?? getDefaultCodexPersonaMode(breedId),
+    codexIdentityIsolation: cat?.codex?.identityIsolation ?? getDefaultCodexIdentityIsolation(breedId),
+    codexPersonaPrompt: cat?.codex?.personaPrompt ?? '',
     sessionChain: String(cat?.sessionChain ?? true) as SessionChainValue,
     maxPromptTokens: cat?.contextBudget ? String(cat.contextBudget.maxPromptTokens) : '',
     maxContextTokens: cat?.contextBudget ? String(cat.contextBudget.maxContextTokens) : '',

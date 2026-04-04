@@ -42,6 +42,12 @@ const cliSchema = z.object({
   defaultArgs: z.array(z.string().min(1)).optional(),
 });
 
+const codexPersonaSchema = z.object({
+  personaMode: z.enum(['off', 'balanced', 'strong']).optional(),
+  identityIsolation: z.enum(['inherit-repo', 'neutral-root']).optional(),
+  personaPrompt: z.string().trim().min(1).optional(),
+});
+
 const clientSchema = z.enum(['anthropic', 'openai', 'google', 'dare', 'antigravity', 'opencode']);
 const catIdSchema = z
   .string()
@@ -85,6 +91,7 @@ const createNormalCatSchema = baseCatSchema.extend({
   cli: cliSchema.optional(),
   cliConfigArgs: z.array(z.string().min(1)).optional(),
   ocProviderName: z.string().min(1).optional(),
+  codex: codexPersonaSchema.optional(),
 });
 
 const createAntigravityCatSchema = baseCatSchema.extend({
@@ -119,6 +126,7 @@ const updateCatSchema = z.object({
   commandArgs: z.array(z.string().min(1)).optional(),
   cliConfigArgs: z.array(z.string().min(1)).optional(),
   ocProviderName: z.string().min(1).nullable().optional(),
+  codex: codexPersonaSchema.nullable().optional(),
 });
 
 function resolveOperator(raw: unknown): string | null {
@@ -278,6 +286,7 @@ async function toCatResponse(
     commandArgs: cat.commandArgs,
     cliConfigArgs: cat.cliConfigArgs,
     ocProviderName: cat.ocProviderName,
+    codex: cat.codex,
     variantLabel: cat.variantLabel ?? undefined,
     isDefaultVariant: cat.isDefaultVariant ?? undefined,
     breedDisplayName: cat.breedDisplayName ?? undefined,
@@ -441,6 +450,7 @@ export const catsRoutes: FastifyPluginAsync = async (app) => {
           cli: body.cli ?? defaultCliForClient(body.client),
           ...(body.cliConfigArgs ? { cliConfigArgs: body.cliConfigArgs } : {}),
           ...(body.ocProviderName ? { ocProviderName: body.ocProviderName } : {}),
+          ...(body.codex ? { codex: body.codex } : {}),
         });
       }
     } catch (err) {
@@ -550,6 +560,17 @@ export const catsRoutes: FastifyPluginAsync = async (app) => {
     try {
       const hasCommandArgsPatch = body.commandArgs !== undefined;
       const nextCommandArgs = body.commandArgs ?? [];
+      const syncDefaultCliPatch =
+        body.client !== undefined &&
+        body.client !== currentCat.provider &&
+        body.client !== 'antigravity' &&
+        body.cli === undefined
+          ? { cli: defaultCliForClient(body.client) }
+          : {};
+      const resetCliConfigArgsPatch =
+        body.client !== undefined && body.client !== currentCat.provider && body.cliConfigArgs === undefined
+          ? { cliConfigArgs: [] }
+          : {};
       const antigravityCliPatch =
         body.client === 'antigravity' || (currentCat.provider === 'antigravity' && hasCommandArgsPatch)
           ? {
@@ -584,14 +605,15 @@ export const catsRoutes: FastifyPluginAsync = async (app) => {
             }
           : {}),
         ...(!hasCommandArgsPatch ? antigravityCliPatch : {}),
-        ...(body.cli !== undefined ? { cli: body.cli } : {}),
+        ...(body.cli !== undefined ? { cli: body.cli } : syncDefaultCliPatch),
         ...(body.available !== undefined ? { available: body.available } : {}),
-        ...(body.cliConfigArgs !== undefined ? { cliConfigArgs: body.cliConfigArgs } : {}),
+        ...(body.cliConfigArgs !== undefined ? { cliConfigArgs: body.cliConfigArgs } : resetCliConfigArgsPatch),
         ...(body.ocProviderName !== undefined
           ? body.ocProviderName === null
             ? { ocProviderName: null }
             : { ocProviderName: body.ocProviderName }
           : {}),
+        ...(body.codex !== undefined ? { codex: body.codex } : {}),
       });
       const resolved = await reconcileCatRegistry(projectRoot, managedIdsBefore);
       await configEventBus.emitChangeAsync({

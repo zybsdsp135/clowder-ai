@@ -28,6 +28,11 @@ export interface CatData {
   commandArgs?: string[];
   cliConfigArgs?: string[];
   ocProviderName?: string;
+  codex?: {
+    personaMode?: 'off' | 'balanced' | 'strong';
+    identityIsolation?: 'inherit-repo' | 'neutral-root';
+    personaPrompt?: string;
+  };
   contextBudget?: {
     maxPromptTokens: number;
     maxContextTokens: number;
@@ -123,6 +128,7 @@ function normalizeCats(rawCats: unknown[]): CatData[] {
       accountRef: cat.accountRef ?? cat.providerProfileId,
       provider: cat.provider ?? 'openai',
       defaultModel: cat.defaultModel ?? '',
+      codex: cat.codex,
       avatar: cat.avatar ?? '',
       roleDescription: cat.roleDescription ?? '',
       personality: cat.personality ?? '',

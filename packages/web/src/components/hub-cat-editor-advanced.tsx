@@ -4,6 +4,8 @@ import type { CatData } from '@/hooks/useCatData';
 import {
   CODEX_APPROVAL_OPTIONS,
   CODEX_AUTH_MODE_OPTIONS,
+  CODEX_IDENTITY_ISOLATION_OPTIONS,
+  CODEX_PERSONA_MODE_OPTIONS,
   CODEX_SANDBOX_OPTIONS,
   type CodexRuntimeSettings,
   type HubCatEditorFormState,
@@ -11,7 +13,7 @@ import {
   SESSION_STRATEGY_OPTIONS,
   type StrategyFormState,
 } from './hub-cat-editor.model';
-import { RangeField, SectionCard, SelectField, TextField } from './hub-cat-editor-fields';
+import { RangeField, SectionCard, SelectField, TextAreaField, TextField } from './hub-cat-editor-fields';
 import { TagEditor } from './hub-tag-editor';
 
 type FormPatch = Partial<HubCatEditorFormState>;
@@ -54,11 +56,11 @@ export function AdvancedRuntimeSection({
   return (
     <SectionCard
       title="高级运行时参数"
-      description="contextBudget + Session 策略 + Client 特有参数。标有 (Codex) 的参数仅在选择对应 Client 时显示。"
+      description="contextBudget + Session 策略 + Client 运行参数。Codex 的专属策略只会在选择 Codex Client 时显示。"
       tone="success"
     >
       <p className="text-xs leading-5 text-[#6C7A6D]">
-        上下文预算会随成员配置一起持久化到运行时 catalog。4 项要么全部留空，要么全部填写。
+        如需调整该成员的上下文预算，请保持 4 项要么全部留空，要么全部填写，避免只填一部分。
       </p>
       <div className="space-y-2">
         <TextField
@@ -67,7 +69,7 @@ export function AdvancedRuntimeSection({
           onChange={(value) => onChange({ maxPromptTokens: value })}
           inputMode="numeric"
           tone="success"
-          placeholder="留空默认 48000"
+          placeholder="例如 48000"
         />
         <TextField
           label="Max Context Tokens"
@@ -75,7 +77,7 @@ export function AdvancedRuntimeSection({
           onChange={(value) => onChange({ maxContextTokens: value })}
           inputMode="numeric"
           tone="success"
-          placeholder="留空默认 128000"
+          placeholder="例如 128000"
         />
         <TextField
           label="Max Messages"
@@ -83,7 +85,7 @@ export function AdvancedRuntimeSection({
           onChange={(value) => onChange({ maxMessages: value })}
           inputMode="numeric"
           tone="success"
-          placeholder="留空默认 50"
+          placeholder="例如 50"
         />
         <TextField
           label="Max Content Length Per Msg"
@@ -92,7 +94,7 @@ export function AdvancedRuntimeSection({
           onChange={(value) => onChange({ maxContentLengthPerMsg: value })}
           inputMode="numeric"
           tone="success"
-          placeholder="留空默认 16000"
+          placeholder="例如 16000"
         />
         <SelectField
           label="Session Chain"
@@ -111,11 +113,11 @@ export function AdvancedRuntimeSection({
               placeholder={
                 form.client === 'opencode' ? '例如 --variant low' : '例如 --config model_reasoning_effort="low"'
               }
-              emptyLabel="无额外参数"
+              emptyLabel="暂无额外参数"
               tone="green"
             />
             <p className="text-[11px] leading-4 text-[#8A776B]">
-              每条直接追加到 CLI 命令，不做隐式转换。 参考：
+              每一项会直接追加到 CLI 命令行末尾，请确认参数格式符合
               {form.client === 'opencode' ? (
                 <a href="https://opencode.ai/docs/cli" target="_blank" rel="noreferrer" className="underline">
                   OpenCode CLI
@@ -126,6 +128,48 @@ export function AdvancedRuntimeSection({
                 </a>
               )}
             </p>
+          </div>
+        ) : null}
+        {form.client === 'openai' ? (
+          <div className="space-y-2 rounded-2xl border border-[#CFE5D5] bg-[#F5FBF6] p-4">
+            <p className="text-sm font-semibold text-[#3D2E22]">Codex 猫味策略</p>
+            <p className="text-[11px] leading-4 text-[#6C7A6D]">
+              这组设置只影响这只猫在调用 Codex CLI 时保留多少个性，以及是否隔离仓库根目录的人格提示。
+            </p>
+            <SelectField
+              label="猫味强度"
+              ariaLabel="Codex Persona Mode"
+              value={form.codexPersonaMode ?? 'balanced'}
+              options={CODEX_PERSONA_MODE_OPTIONS}
+              onChange={(value) =>
+                onChange({ codexPersonaMode: value as HubCatEditorFormState['codexPersonaMode'] })
+              }
+              tone="success"
+            />
+            <p className="text-[11px] leading-4 text-[#6C7A6D]">
+              关闭猫味 = 像普通 Codex 助手；平衡 = 保留视角差异但不过度表演；明显保留猫味 = 更强调角色口吻和互动姿态。
+            </p>
+            <SelectField
+              label="仓库人格隔离"
+              ariaLabel="Codex Identity Isolation"
+              value={form.codexIdentityIsolation ?? 'inherit-repo'}
+              options={CODEX_IDENTITY_ISOLATION_OPTIONS}
+              onChange={(value) =>
+                onChange({ codexIdentityIsolation: value as HubCatEditorFormState['codexIdentityIsolation'] })
+              }
+              tone="success"
+            />
+            <p className="text-[11px] leading-4 text-[#6C7A6D]">
+              继承仓库人格 = 继续接受仓库根目录 `AGENTS.md` 的提示影响；隔离仓库人格 = 尽量用中性工作根启动，避免多只猫都被仓库提示压成同一种口吻。
+            </p>
+            <TextAreaField
+              label="补充人格提示"
+              ariaLabel="Codex Persona Prompt"
+              value={form.codexPersonaPrompt ?? ''}
+              onChange={(value) => onChange({ codexPersonaPrompt: value })}
+              tone="success"
+              placeholder="可选，补充这只猫在 Codex 模式下的视角、语气或互动边界。"
+            />
           </div>
         ) : null}
       </div>
@@ -139,7 +183,7 @@ export function AdvancedRuntimeSection({
           {strategyForm ? (
             <div className="space-y-4">
               <div className="rounded-2xl border border-[#CFE5D5] bg-[#F5FBF6] px-4 py-3 text-xs leading-5 text-[#6C7A6D]">
-                阈值基于 context 填充率 = 当前 tokens / Max Context Tokens。拖动滑条调节百分比。
+                阈值单位是 context 占用率 = 当前 tokens / Max Context Tokens，取值范围建议填写小数百分比。
               </div>
               <div className="space-y-2">
                 <SelectField
@@ -155,13 +199,13 @@ export function AdvancedRuntimeSection({
                   label="Session Warn Threshold"
                   value={strategyForm.warnThreshold}
                   onChange={(value) => onStrategyChange({ warnThreshold: value })}
-                  hint="context 填充到此比例时前端弹出警告提示"
+                  hint="context 占用率达到该比例时，先提示但不立即切换策略。"
                 />
                 <RangeField
                   label="Session Action Threshold"
                   value={strategyForm.actionThreshold}
                   onChange={(value) => onStrategyChange({ actionThreshold: value })}
-                  hint="context 填充到此比例时触发 Session 策略动作（如 handoff 换 session）"
+                  hint="context 占用率达到该比例时，Session 策略会自动执行 handoff 或压缩。"
                 />
                 {strategyForm.strategy === 'hybrid' ? (
                   <TextField
@@ -186,16 +230,16 @@ export function AdvancedRuntimeSection({
           ) : null}
           {!loadingCodexSettings && !codexSettingsEditable ? (
             <p className="rounded-xl border border-[#F5D2B8] bg-[#FFF4EC] px-3 py-2 text-xs leading-5 text-[#C27D52]">
-              Codex 配置基线未加载成功，以下 3 项已禁用；请刷新后重试，避免保存时误以为已生效。
+              Codex 配置基线未加载成功，这 3 项暂时只展示默认值。请刷新后重试，否则保存时不会写入全局配置。
             </p>
           ) : null}
-          <p className="text-center text-xs font-semibold text-[#B59A88]">── Codex 专属 (仅 Client=Codex 时显示) ──</p>
+          <p className="text-center text-xs font-semibold text-[#B59A88]">—— Codex 全局运行参数（影响所有 Codex 成员）——</p>
           <p className="rounded-xl border border-[#CFE5D5] bg-[#F5FBF6] px-3 py-2 text-xs leading-5 text-[#6C7A6D]">
-            成员资料与 Codex 执行参数收敛到同一个入口保存。保存后会分别写入成员 overlay 与全局运行配置。
+            这 3 项不是某一只猫自己的性格设置，而是整个项目所有 Codex 成员共用的底层运行方式。
           </p>
           <div className="space-y-2">
             <SelectField
-              label="Codex Sandbox (Codex)"
+              label="文件权限"
               ariaLabel="Codex Sandbox"
               value={effectiveCodexSettings.sandboxMode}
               options={CODEX_SANDBOX_OPTIONS}
@@ -203,8 +247,11 @@ export function AdvancedRuntimeSection({
               disabled={!codexSettingsEditable}
               tone="success"
             />
+            <p className="text-[11px] leading-4 text-[#6C7A6D]">
+              只读 = 只能查看；工作区可写 = 可改当前项目；完全访问 = 权限最大，适合需要安装依赖或跨目录操作的场景。
+            </p>
             <SelectField
-              label="Codex Approval (Codex)"
+              label="危险操作确认"
               ariaLabel="Codex Approval"
               value={effectiveCodexSettings.approvalPolicy}
               options={CODEX_APPROVAL_OPTIONS}
@@ -212,8 +259,11 @@ export function AdvancedRuntimeSection({
               disabled={!codexSettingsEditable}
               tone="success"
             />
+            <p className="text-[11px] leading-4 text-[#6C7A6D]">
+              控制 Codex 在执行命令前要不要额外确认。越往下越自动化，也越需要你信任当前环境。
+            </p>
             <SelectField
-              label="Codex Auth Mode (Codex)"
+              label="鉴权方式"
               ariaLabel="Codex Auth Mode"
               value={effectiveCodexSettings.authMode}
               options={CODEX_AUTH_MODE_OPTIONS}
@@ -221,6 +271,9 @@ export function AdvancedRuntimeSection({
               disabled={!codexSettingsEditable}
               tone="success"
             />
+            <p className="text-[11px] leading-4 text-[#6C7A6D]">
+              CLI 订阅登录 = 走你本机已登录的 Codex 账号；API Key = 走 OpenAI Key；自动选择 = 让系统自行判断。
+            </p>
           </div>
         </div>
       ) : null}

@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { mock, test } from 'node:test';
@@ -160,7 +161,7 @@ test('injects cat-cafe MCP config when workingDirectory contains mcp-server', as
     assert.ok(args.includes('mcp_servers.cat-cafe.command="node"'));
     const mcpArgsConfig = args.find((arg) => arg.startsWith('mcp_servers.cat-cafe.args=['));
     assert.ok(mcpArgsConfig, 'must inject cat-cafe mcp args config');
-    assert.match(mcpArgsConfig, /packages\/mcp-server\/dist\/index\.js/);
+    assert.match(mcpArgsConfig, /packages[\\/]+mcp-server[\\/]+dist[\\/]+index\.js/);
     assert.ok(args.includes('mcp_servers.cat-cafe.enabled=true'));
     assert.ok(args.includes('mcp_servers.cat-cafe.env.CAT_CAFE_API_URL="http://127.0.0.1:3004"'));
     assert.ok(args.includes('mcp_servers.cat-cafe.env.CAT_CAFE_INVOCATION_ID="inv-test-1"'));
@@ -198,7 +199,7 @@ test('adds --skip-git-repo-check when workingDirectory is not a git repository',
   const proc = createMockProcess();
   const spawnFn = createMockSpawnFn(proc);
   const service = new CodexAgentService({ spawnFn, model: 'gpt-5.3-codex' });
-  const nonGitDir = mkdtempSync(join('/tmp', 'codex-non-git-'));
+  const nonGitDir = mkdtempSync(join(tmpdir(), 'codex-non-git-'));
 
   try {
     const promise = collect(service.invoke('hello', { workingDirectory: nonGitDir }));
@@ -226,7 +227,7 @@ test('does not add --skip-git-repo-check inside a git repository', async () => {
 });
 
 test('isGitRepositoryPath walks parent directories instead of shelling out to git', () => {
-  const root = mkdtempSync(join('/tmp', 'codex-git-marker-'));
+  const root = mkdtempSync(join(tmpdir(), 'codex-git-marker-'));
   const nestedDir = join(root, 'packages', 'api');
 
   try {
@@ -234,7 +235,7 @@ test('isGitRepositoryPath walks parent directories instead of shelling out to gi
     writeFileSync(join(root, '.git'), 'gitdir: /tmp/example\n', 'utf8');
 
     assert.equal(isGitRepositoryPath(nestedDir), true);
-    assert.equal(isGitRepositoryPath(join('/tmp', 'codex-not-a-repo')), false);
+    assert.equal(isGitRepositoryPath(join(tmpdir(), 'codex-not-a-repo')), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -334,6 +335,105 @@ test('resume session does NOT include --add-dir (sandbox locked at creation)', a
   const args = spawnFn.mock.calls[0].arguments[1];
   assert.ok(!args.includes('--add-dir'), 'resume args must not include --add-dir');
   assert.ok(!args.includes('--sandbox'), 'resume args must not include --sandbox');
+});
+
+test('non-maine-coon codex cats use a neutral cwd and explicit write targets', async () => {
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new CodexAgentService({ spawnFn, catId: 'opus' });
+  const repoRoot = mkdtempSync(join(tmpdir(), 'codex-neutral-root-'));
+  const workingDir = join(repoRoot, 'packages', 'api');
+
+  try {
+    mkdirSync(workingDir, { recursive: true });
+    writeFileSync(join(repoRoot, '.git'), 'gitdir: /tmp/example\n', 'utf8');
+
+    const promise = collect(service.invoke('hello', { workingDirectory: workingDir }));
+    emitCodexEvents(proc, [{ type: 'thread.started', thread_id: 't-neutral-cwd' }]);
+    await promise;
+
+    const args = spawnFn.mock.calls[0].arguments[1];
+    const spawnOpts = spawnFn.mock.calls[0].arguments[2];
+    assert.notEqual(spawnOpts.cwd, workingDir);
+    assert.match(spawnOpts.cwd, /cat-cafe-codex-roots/);
+    assert.ok(args.includes('--skip-git-repo-check'));
+    assert.ok(args.includes(workingDir));
+    assert.ok(args.includes(repoRoot));
+    assert.ok(args.includes(join(repoRoot, '.git')));
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test('maine-coon codex cats keep the project cwd when invoking codex', async () => {
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new CodexAgentService({ spawnFn, catId: 'codex' });
+  const repoRoot = mkdtempSync(join(tmpdir(), 'codex-project-root-'));
+  const workingDir = join(repoRoot, 'packages', 'api');
+
+  try {
+    mkdirSync(workingDir, { recursive: true });
+    writeFileSync(join(repoRoot, '.git'), 'gitdir: /tmp/example\n', 'utf8');
+
+    const promise = collect(service.invoke('hello', { workingDirectory: workingDir }));
+    emitCodexEvents(proc, [{ type: 'thread.started', thread_id: 't-project-cwd' }]);
+    await promise;
+
+    const args = spawnFn.mock.calls[0].arguments[1];
+    const spawnOpts = spawnFn.mock.calls[0].arguments[2];
+    assert.equal(spawnOpts.cwd, workingDir);
+    assert.ok(args.includes('--add-dir'));
+    assert.ok(args.includes('.git'));
+    assert.ok(!args.includes('--skip-git-repo-check'));
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test('member-level codex identityIsolation override can keep a non-maine-coon cat on the project cwd', async () => {
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const repoRoot = mkdtempSync(join(tmpdir(), 'codex-configured-root-'));
+  const workingDir = join(repoRoot, 'packages', 'api');
+
+  const { catRegistry, CAT_CONFIGS } = await import('@cat-cafe/shared');
+  catRegistry.reset();
+  for (const [id, config] of Object.entries(CAT_CONFIGS)) {
+    catRegistry.register(id, config);
+  }
+  catRegistry.register('runtime-opus-codex', {
+    ...CAT_CONFIGS.opus,
+    id: 'runtime-opus-codex',
+    provider: 'openai',
+    defaultModel: 'gpt-5.4',
+    codex: {
+      personaMode: 'strong',
+      identityIsolation: 'inherit-repo',
+    },
+  });
+  const service = new CodexAgentService({ spawnFn, catId: 'runtime-opus-codex', model: 'gpt-5.4' });
+
+  try {
+    mkdirSync(workingDir, { recursive: true });
+    writeFileSync(join(repoRoot, '.git'), 'gitdir: /tmp/example\n', 'utf8');
+
+    const promise = collect(service.invoke('hello', { workingDirectory: workingDir }));
+    emitCodexEvents(proc, [{ type: 'thread.started', thread_id: 't-configured-cwd' }]);
+    await promise;
+
+    const args = spawnFn.mock.calls[0].arguments[1];
+    const spawnOpts = spawnFn.mock.calls[0].arguments[2];
+    assert.equal(spawnOpts.cwd, workingDir);
+    assert.ok(!args.includes('--skip-git-repo-check'));
+  } finally {
+    const { catRegistry, CAT_CONFIGS } = await import('@cat-cafe/shared');
+    catRegistry.reset();
+    for (const [id, config] of Object.entries(CAT_CONFIGS)) {
+      catRegistry.register(id, config);
+    }
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
 });
 
 test('handles multiple agent_message items', async () => {

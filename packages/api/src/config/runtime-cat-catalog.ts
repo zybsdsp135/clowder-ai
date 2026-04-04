@@ -4,6 +4,7 @@ import type {
   CatBreed,
   CatCafeConfig,
   CatColor,
+  CodexPersonaConfig,
   CatProvider,
   CatVariant,
   CliConfig,
@@ -41,6 +42,7 @@ export interface RuntimeCatInput {
   cliConfigArgs?: string[];
   contextBudget?: ContextBudget;
   ocProviderName?: string;
+  codex?: CodexPersonaConfig;
 }
 
 export interface RuntimeCatUpdate {
@@ -65,6 +67,7 @@ export interface RuntimeCatUpdate {
   cliConfigArgs?: string[];
   contextBudget?: ContextBudget | null;
   ocProviderName?: string | null;
+  codex?: CodexPersonaConfig | null;
   available?: boolean;
 }
 
@@ -224,6 +227,7 @@ function createBreedFromInput(input: RuntimeCatInput): CatBreed {
         ...(input.commandArgs && input.commandArgs.length > 0 ? { commandArgs: input.commandArgs } : {}),
         ...(input.cliConfigArgs && input.cliConfigArgs.length > 0 ? { cliConfigArgs: input.cliConfigArgs } : {}),
         ...(input.ocProviderName ? { ocProviderName: input.ocProviderName } : {}),
+        ...(input.codex ? { codex: input.codex } : {}),
         ...(input.contextBudget ? { contextBudget: input.contextBudget } : {}),
         ...(input.personality != null && input.personality.trim().length > 0 ? { personality: input.personality } : {}),
         ...(input.teamStrengths != null && input.teamStrengths.trim().length > 0
@@ -416,6 +420,13 @@ export function updateRuntimeCat(projectRoot: string, catId: string, patch: Runt
       variant.ocProviderName = patch.ocProviderName;
     } else {
       delete variant.ocProviderName;
+    }
+  }
+  if (patch.codex !== undefined) {
+    if (patch.codex) {
+      variant.codex = patch.codex;
+    } else {
+      delete variant.codex;
     }
   }
   if (patch.available !== undefined && catalog.version === 2) {

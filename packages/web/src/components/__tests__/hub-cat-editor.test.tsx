@@ -457,6 +457,164 @@ describe('HubCatEditor', () => {
     expect(modelInputAfter.value).not.toBe('claude-opus-4-6');
   });
 
+  it('switching Client to Codex immediately swaps an incompatible Claude binding to a Codex-compatible account', async () => {
+    mockApiFetch.mockResolvedValue(
+      jsonResponse({
+        projectPath: '/tmp/project',
+        activeProfileId: null,
+        providers: [
+          {
+            id: 'claude',
+            provider: 'claude',
+            displayName: 'Claude (OAuth)',
+            name: 'Claude (OAuth)',
+            authType: 'oauth',
+            kind: 'builtin',
+            builtin: true,
+            client: 'anthropic',
+            models: ['claude-opus-4-6'],
+            hasApiKey: false,
+            createdAt: '',
+            updatedAt: '',
+          },
+          {
+            id: 'codex',
+            provider: 'codex',
+            displayName: 'Codex (OAuth)',
+            name: 'Codex (OAuth)',
+            authType: 'oauth',
+            kind: 'builtin',
+            builtin: true,
+            client: 'openai',
+            models: ['gpt-5.4'],
+            hasApiKey: false,
+            createdAt: '',
+            updatedAt: '',
+          },
+        ],
+      }),
+    );
+
+    await act(async () => {
+      root.render(
+        React.createElement(HubCatEditor, {
+          open: true,
+          cat: {
+            id: 'opus',
+            displayName: '布偶猫',
+            breedDisplayName: 'Ragdoll',
+            nickname: '',
+            provider: 'anthropic',
+            accountRef: 'claude',
+            defaultModel: 'claude-opus-4-6',
+            color: { primary: '#000', secondary: '#fff' },
+            mentionPatterns: ['@opus'],
+            avatar: '',
+            roleDescription: '',
+            personality: '',
+            source: 'seed',
+          },
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+    });
+    await flushEffects();
+
+    expect(queryField<HTMLSelectElement>(container, 'select[aria-label="认证信息"]').value).toBe('claude');
+
+    await changeField(queryField(container, 'select[aria-label="Client"]'), 'openai', 'change');
+    await flushEffects();
+
+    expect(queryField<HTMLSelectElement>(container, 'select[aria-label="认证信息"]').value).toBe('codex');
+    expect(queryField<HTMLInputElement>(container, 'input[aria-label="Model"]').value).toBe('gpt-5.4');
+  });
+
+  it('switching Client to Codex falls back to builtin codex binding and gpt-5.4 when provider profiles are empty', async () => {
+    const onSaved = vi.fn(() => Promise.resolve());
+    mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/provider-profiles') {
+        return Promise.resolve(
+          jsonResponse({
+            projectPath: '/tmp/project',
+            activeProfileId: null,
+            providers: [],
+            bootstrapBindings: {},
+          }),
+        );
+      }
+      if (path === '/api/config/session-strategy') {
+        return Promise.resolve(jsonResponse({ cats: [] }));
+      }
+      if (path === '/api/config') {
+        return Promise.resolve(
+          jsonResponse({
+            config: {
+              cli: {
+                codexSandboxMode: 'workspace-write',
+                codexApprovalPolicy: 'on-request',
+              },
+              codexExecution: {
+                authMode: 'oauth',
+              },
+            },
+          }),
+        );
+      }
+      if (path === '/api/cats/opus' && init?.method === 'PATCH') {
+        return Promise.resolve(jsonResponse({ cat: { id: 'opus' } }));
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    await act(async () => {
+      root.render(
+        React.createElement(HubCatEditor, {
+          open: true,
+          cat: {
+            id: 'opus',
+            displayName: '布偶猫',
+            provider: 'anthropic',
+            accountRef: 'claude',
+            defaultModel: 'claude-opus-4-6',
+            color: { primary: '#000', secondary: '#fff' },
+            mentionPatterns: ['@opus'],
+            avatar: '/avatars/opus.png',
+            roleDescription: 'architect',
+            personality: 'gentle',
+            source: 'seed',
+          },
+          onClose: vi.fn(),
+          onSaved,
+        }),
+      );
+    });
+    await flushEffects();
+
+    await changeField(queryField(container, 'select[aria-label="Client"]'), 'openai', 'change');
+    await flushEffects();
+
+    expect(queryField<HTMLInputElement>(container, 'input[aria-label="Model"]').value).toBe('gpt-5.4');
+
+    const saveButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent === '保存修改',
+    );
+    await act(async () => {
+      saveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flushEffects();
+
+    const patchCall = mockApiFetch.mock.calls.find(
+      ([path, init]) => path === '/api/cats/opus' && init?.method === 'PATCH',
+    );
+    expect(patchCall).toBeTruthy();
+    const payload = JSON.parse(String(patchCall?.[1]?.body));
+    expect(payload.client).toBe('openai');
+    expect(payload.accountRef).toBe('codex');
+    expect(payload.defaultModel).toBe('gpt-5.4');
+    expect(onSaved).toHaveBeenCalledTimes(1);
+  });
+
   it('resets ocProviderName when switching account to prevent stale provider carry-over', async () => {
     mockApiFetch.mockResolvedValue(
       jsonResponse({
@@ -1631,10 +1789,10 @@ describe('HubCatEditor', () => {
     expect(container.textContent).toContain('别名与 @ 路由');
     expect(container.textContent).toContain('认证与模型');
     expect(container.textContent).toContain('Session Chain');
-    expect(container.textContent).toContain('── Codex 专属 (仅 Client=Codex 时显示) ──');
-    expect(container.textContent).toContain('Codex Sandbox (Codex)');
-    expect(container.textContent).toContain('Codex Approval (Codex)');
-    expect(container.textContent).toContain('Codex Auth Mode (Codex)');
+    expect(container.textContent).toContain('Codex 全局运行参数');
+    expect(container.textContent).toContain('文件权限');
+    expect(container.textContent).toContain('危险操作确认');
+    expect(container.textContent).toContain('鉴权方式');
     expect(container.textContent).not.toContain('这 3 项是全局运行参数（非成员级）');
     expect(queryField<HTMLSelectElement>(container, 'select[aria-label^="Codex Sandbox"]').disabled).toBe(false);
     expect(queryField<HTMLSelectElement>(container, 'select[aria-label^="Codex Approval"]').disabled).toBe(false);
@@ -1875,7 +2033,7 @@ describe('HubCatEditor', () => {
     await changeField(queryField(container, 'select[aria-label="Client"]'), 'openai', 'change');
     await flushEffects();
 
-    expect(container.textContent).toContain('Codex Sandbox (Codex)');
+    expect(container.textContent).toContain('文件权限');
     expect(queryField<HTMLSelectElement>(container, 'select[aria-label^="Codex Sandbox"]').value).toBe(
       'danger-full-access',
     );

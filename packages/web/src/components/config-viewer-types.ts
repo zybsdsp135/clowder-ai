@@ -42,6 +42,7 @@ export interface ConfigData {
     model: string;
     authMode: 'oauth' | 'api_key' | 'auto';
     passModelArg: boolean;
+    distinctPersonas: boolean;
   };
   governance: { degradationEnabled: boolean; doneTimeoutMs: number; heartbeatIntervalMs: number };
   ui?: {

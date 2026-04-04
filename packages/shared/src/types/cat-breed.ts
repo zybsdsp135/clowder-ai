@@ -7,7 +7,7 @@
  * Phase 4-F: 支持多 Variant（多版本猫召唤）
  */
 
-import type { CatColor, CatProvider } from './cat.js';
+import type { CatColor, CatProvider, CodexPersonaConfig } from './cat.js';
 import type { CatId } from './ids.js';
 import type { VoiceConfig } from './tts.js';
 
@@ -93,6 +93,8 @@ export interface CatVariant {
    *  Used with api_key auth — runtime assembles `ocProviderName/defaultModel` for the -m flag
    *  and generates an OPENCODE_CONFIG runtime config file for the provider. */
   readonly ocProviderName?: string;
+  /** Per-variant Codex behavior policy when provider=openai. */
+  readonly codex?: CodexPersonaConfig;
 }
 
 /**

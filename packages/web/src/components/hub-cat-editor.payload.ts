@@ -35,6 +35,19 @@ function resolveFormAccountRef(form: HubCatEditorFormState): string {
   );
 }
 
+function buildCodexPersonaPayload(form: HubCatEditorFormState, cat?: CatData | null) {
+  if (form.client !== 'openai') {
+    return cat?.codex ? { codex: null as null } : {};
+  }
+  return {
+    codex: {
+      personaMode: form.codexPersonaMode ?? 'balanced',
+      identityIsolation: form.codexIdentityIsolation ?? 'inherit-repo',
+      ...(trimText(form.codexPersonaPrompt) ? { personaPrompt: trimText(form.codexPersonaPrompt) } : {}),
+    },
+  };
+}
+
 export function buildContextBudget(form: HubCatEditorFormState) {
   const values = [form.maxPromptTokens, form.maxContextTokens, form.maxMessages, form.maxContentLengthPerMsg].map(
     (value) => value.trim(),
@@ -106,6 +119,7 @@ export function buildCatPayload(form: HubCatEditorFormState, cat?: CatData | nul
       ...mcpSupportPatch,
       defaultModel: trimText(form.defaultModel),
       commandArgs: splitCommandArgs(commandArgsSource),
+      ...buildCodexPersonaPayload(form, cat),
     };
   }
 
@@ -117,6 +131,7 @@ export function buildCatPayload(form: HubCatEditorFormState, cat?: CatData | nul
     ...mcpSupportPatch,
     defaultModel: trimText(form.defaultModel),
     cliConfigArgs: (form.cliConfigArgs ?? []).filter((arg) => arg.trim().length > 0),
+    ...buildCodexPersonaPayload(form, cat),
     ...(form.client === 'opencode' && trimText(form.ocProviderName)
       ? { ocProviderName: trimText(form.ocProviderName) }
       : cat?.ocProviderName

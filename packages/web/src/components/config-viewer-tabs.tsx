@@ -3,6 +3,7 @@ import type { CatData } from '@/hooks/useCatData';
 import { useChatStore } from '@/stores/chatStore';
 import { apiFetch } from '@/utils/api-client';
 import type { ConfigData } from './config-viewer-types';
+import { HubCodexDistinctPersonasSetting } from './HubCodexDistinctPersonasSetting';
 import { HubCoCreatorOverviewCard, HubMemberOverviewCard, HubOverviewToolbar } from './HubMemberOverviewCard';
 
 export type { Capabilities, CatConfig, ConfigData, ContextBudget } from './config-viewer-types';
@@ -158,7 +159,9 @@ export function SystemTab({ config, onConfigChange }: { config: ConfigData; onCo
             <KV label="Model" value={config.codexExecution.model} />
             <KV label="Auth Mode" value={config.codexExecution.authMode} />
             <KV label="Pass --model Arg" value={config.codexExecution.passModelArg} />
+            <KV label="Distinct Personas" value={config.codexExecution.distinctPersonas} />
           </div>
+          <HubCodexDistinctPersonasSetting initialValue={config.codexExecution.distinctPersonas} />
         </Section>
       ) : null}
       <Section title="治理 & 降级">

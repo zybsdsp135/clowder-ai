@@ -9,13 +9,14 @@ import {
   buildCatPayload,
   buildCodexConfigPatches,
   buildStrategyPayload,
-  builtinAccountIdForClient,
   type CodexRuntimeSettings,
   DEFAULT_ANTIGRAVITY_COMMAND_ARGS,
-  filterAccounts,
+  DEFAULT_MODEL_BY_CLIENT,
   type HubCatEditorDraft,
   type HubCatEditorFormState,
   initialState,
+  listAccountOptionsForClient,
+  preferredAccountRefForClient,
   type StrategyFormState,
   splitMentionPatterns,
   toCodexRuntimeSettings,
@@ -56,7 +57,10 @@ export function HubCatEditor({ cat, draft, open, onClose, onSaved }: HubCatEdito
   const [codexSettings, setCodexSettings] = useState<CodexRuntimeSettings | null>(null);
   const [codexSettingsBaseline, setCodexSettingsBaseline] = useState<CodexRuntimeSettings | null>(null);
 
-  const availableProfiles = useMemo(() => filterAccounts(form.client, profiles), [form.client, profiles]);
+  const availableProfiles = useMemo(
+    () => listAccountOptionsForClient(form.client, profiles),
+    [form.client, profiles],
+  );
   const selectedProfile = useMemo(
     () => availableProfiles.find((profile) => profile.id === form.accountRef) ?? null,
     [availableProfiles, form.accountRef],
@@ -189,28 +193,31 @@ export function HubCatEditor({ cat, draft, open, onClose, onSaved }: HubCatEdito
       return;
     }
     setForm((prev) => {
+      if (prev.accountRef.trim().length > 0) {
+        if (availableProfiles.some((profile) => profile.id === prev.accountRef)) return prev;
+        if (loadingProfiles) return prev;
+      }
       if (prev.accountRef.trim().length === 0 && (cat || !draft)) {
         return prev;
       }
       if (availableProfiles.length === 0) return prev;
-      const preferredBuiltin = builtinAccountIdForClient(prev.client);
       const nextProfile =
         availableProfiles.find((profile) => profile.id === prev.accountRef) ??
-        (preferredBuiltin ? availableProfiles.find((profile) => profile.id === preferredBuiltin) : null) ??
+        availableProfiles.find((profile) => profile.id === preferredAccountRefForClient(prev.client, profiles)) ??
         availableProfiles[0] ??
         null;
       if (!nextProfile) return prev;
       if (prev.accountRef === nextProfile.id) return prev;
       return { ...prev, accountRef: nextProfile.id };
     });
-  }, [availableProfiles, cat, draft, form.client]);
+  }, [availableProfiles, cat, draft, form.client, loadingProfiles]);
 
   useEffect(() => {
-    if (form.client === 'antigravity' || modelOptions.length === 0) return;
+    if (form.client === 'antigravity') return;
     if (form.defaultModel.trim().length > 0) return;
     setForm((prev) => {
       if (prev.client === 'antigravity' || prev.defaultModel.trim().length > 0) return prev;
-      return { ...prev, defaultModel: modelOptions[0] ?? '' };
+      return { ...prev, defaultModel: modelOptions[0] ?? DEFAULT_MODEL_BY_CLIENT[prev.client] ?? '' };
     });
   }, [form.client, form.defaultModel, modelOptions]);
 
@@ -230,7 +237,26 @@ export function HubCatEditor({ cat, draft, open, onClose, onSaved }: HubCatEdito
 
   const patchForm = (patch: Partial<HubCatEditorFormState>) => {
     setHasUnsavedChanges(true);
-    setForm((prev) => ({ ...prev, ...patch }));
+    setForm((prev) => {
+      const next = { ...prev, ...patch };
+      if (patch.client !== undefined && patch.client !== prev.client) {
+        if (patch.client === 'antigravity') {
+          next.accountRef = '';
+        } else {
+          next.accountRef = preferredAccountRefForClient(patch.client, profiles);
+        }
+        next.defaultModel = DEFAULT_MODEL_BY_CLIENT[patch.client] ?? '';
+        next.ocProviderName = '';
+        next.cliConfigArgs = [];
+      }
+      if (patch.accountRef !== undefined && patch.accountRef !== prev.accountRef) {
+        next.defaultModel = patch.accountRef.trim()
+          ? (profiles.find((profile) => profile.id === patch.accountRef)?.models?.[0] ?? DEFAULT_MODEL_BY_CLIENT[next.client] ?? '')
+          : (DEFAULT_MODEL_BY_CLIENT[next.client] ?? '');
+        next.ocProviderName = '';
+      }
+      return next;
+    });
     if (patch.mentionPatterns !== undefined) {
       setFieldErrors((prev) => ({ ...prev, routing: false }));
     }
@@ -258,7 +284,7 @@ export function HubCatEditor({ cat, draft, open, onClose, onSaved }: HubCatEdito
       onClose();
       return;
     }
-    if (await confirm({ title: '关闭确认', message: '有未保存的修改，确定要关闭吗？' })) onClose();
+    if (await confirm({ title: '关闭确认', message: '你有未保存的修改，是否确定关闭？' })) onClose();
   };
 
   const handleAvatarUpload = async (file: File) => {
@@ -298,17 +324,17 @@ export function HubCatEditor({ cat, draft, open, onClose, onSaved }: HubCatEdito
           const si = m.indexOf('/');
           const looksLike = si > 0 && si < m.length - 1;
           if (!looksLike) return true; // bare model, need provider
-          // Known provider prefix → canonical (synced with BUILTIN_OPENCODE_PROVIDERS)
+          // Known provider prefix = canonical (synced with BUILTIN_OPENCODE_PROVIDERS)
           const known = new Set(['anthropic', 'openai', 'openrouter', 'google']);
           if (known.has(m.slice(0, si))) return false;
-          // Non-builtin: "x/y" in account list + bare "y" absent → namespace
+          // Non-builtin: "x/y" in account list + bare "y" absent = namespace
           const acm = selectedProfile?.models ?? [];
           const bare = m.slice(si + 1);
           return acm.includes(m) && !acm.includes(bare);
         })()
       ) {
         errors.account = true;
-        errorMessages.push('请使用 provider/model 格式（如 minimax/MiniMax-M2.7），或填写 Provider 名称');
+        errorMessages.push('如果使用 provider/model 格式，例如 minimax/MiniMax-M2.7，请填写 Provider 名称');
       }
       if (splitMentionPatterns(form.mentionPatterns).length === 0) {
         errors.routing = true;
@@ -442,7 +468,7 @@ export function HubCatEditor({ cat, draft, open, onClose, onSaved }: HubCatEdito
     if (!cat) return;
     const ok = await confirm({
       title: '删除确认',
-      message: `确认删除成员「${cat.displayName}」吗？此操作不可撤销。`,
+      message: `确定删除成员 ${cat.displayName} 吗？此操作不可恢复。`,
       variant: 'danger',
       confirmLabel: '删除',
     });
@@ -453,7 +479,7 @@ export function HubCatEditor({ cat, draft, open, onClose, onSaved }: HubCatEdito
       const res = await apiFetch(`/api/cats/${cat.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const payload = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-        setError((payload.error as string) ?? `删除失败 (${res.status})`);
+        setError((payload.error as string) ?? `保存失败 (${res.status})`);
         return;
       }
       await onSaved();
@@ -474,7 +500,7 @@ export function HubCatEditor({ cat, draft, open, onClose, onSaved }: HubCatEdito
         <div className="flex shrink-0 items-start justify-between border-b border-[#F0DDCD] px-7 py-5">
           <div>
             <p className="text-[13px] font-semibold text-[#77A777]">
-              成员协作 &gt; 总览 &gt; {cat ? '编辑成员' : '添加成员'}
+              成员协议 &gt; 配置 &gt; {cat ? '编辑成员' : '新增成员'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -562,7 +588,7 @@ export function HubCatEditor({ cat, draft, open, onClose, onSaved }: HubCatEdito
               disabled={saving || saveBlockedByProfileBinding}
               className="rounded-full bg-[#D49266] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#C88254] disabled:opacity-50"
             >
-              {saving ? '保存中…' : cat ? '保存修改' : '保存'}
+              {saving ? '保存中...' : cat ? '保存修改' : '保存'}
             </button>
           </div>
         </div>

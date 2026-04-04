@@ -60,6 +60,12 @@ const CONFIG_KEY_DEFINITIONS: Record<string, ConfigKeyDefinition> = {
     validate: (value) => ['true', 'false'].includes(value),
     riskLevel: 'high',
   },
+  'codex.execution.distinctPersonas': {
+    envKey: 'CAT_CODEX_DISTINCT_PERSONAS',
+    snapshotPath: ['codexExecution', 'distinctPersonas'],
+    validate: (value) => ['true', 'false'].includes(value),
+    riskLevel: 'high',
+  },
   'ui.bubble.thinking': {
     envKey: 'UI_BUBBLE_THINKING_DEFAULT',
     snapshotPath: ['ui', 'bubbleDefaults', 'thinking'],

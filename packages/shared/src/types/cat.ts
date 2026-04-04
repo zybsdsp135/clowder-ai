@@ -12,6 +12,23 @@ import { createCatId } from './ids.js';
  */
 export type CatProvider = 'anthropic' | 'openai' | 'google' | 'dare' | 'antigravity' | 'opencode' | 'a2a';
 
+export type CodexPersonaMode = 'off' | 'balanced' | 'strong';
+export type CodexIdentityIsolation = 'inherit-repo' | 'neutral-root';
+
+export interface CodexPersonaConfig {
+  readonly personaMode?: CodexPersonaMode;
+  readonly identityIsolation?: CodexIdentityIsolation;
+  readonly personaPrompt?: string;
+}
+
+export function getDefaultCodexPersonaMode(breedId?: string): CodexPersonaMode {
+  return breedId === 'maine-coon' ? 'balanced' : 'strong';
+}
+
+export function getDefaultCodexIdentityIsolation(breedId?: string): CodexIdentityIsolation {
+  return breedId === 'maine-coon' ? 'inherit-repo' : 'neutral-root';
+}
+
 /**
  * Cat status in the system
  */
@@ -65,6 +82,8 @@ export interface CatConfig {
   readonly cliConfigArgs?: readonly string[];
   /** F189: OpenCode custom provider name for api_key routing (runtime assembles provider/model). */
   readonly ocProviderName?: string;
+  /** Per-cat Codex behavior policy when provider=openai. */
+  readonly codex?: CodexPersonaConfig;
 }
 
 /**

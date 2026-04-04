@@ -12,7 +12,7 @@ import { configStore } from './ConfigStore.js';
 import { getAllCatBudgets } from './cat-budgets.js';
 import { getCoCreatorConfig } from './cat-config-loader.js';
 import { getCatModel } from './cat-models.js';
-import { getCodexApprovalPolicy, getCodexSandboxMode } from './codex-cli.js';
+import { getCodexApprovalPolicy, getCodexSandboxMode, isCodexDistinctPersonasEnabled } from './codex-cli.js';
 import type { CodexAuthMode, ConfigSnapshot } from './config-snapshot.js';
 import { parseBoolean, parseEnum } from './parse-utils.js';
 
@@ -92,6 +92,10 @@ export function collectConfigSnapshot(): ConfigSnapshot {
   const codexExecutionModel = env.CAT_CODEX_EXEC_MODEL?.trim() || defaultCodexModel;
   const codexExecutionAuthMode = parseEnum<CodexAuthMode>(env.CODEX_AUTH_MODE, ['oauth', 'api_key', 'auto'], 'oauth');
   const codexExecutionPassModelArg = parseBoolean(env.CAT_CODEX_PASS_MODEL_ARG, true);
+  const codexExecutionDistinctPersonas = parseBoolean(
+    configStore.get('codex.execution.distinctPersonas') ?? env.CAT_CODEX_DISTINCT_PERSONAS,
+    isCodexDistinctPersonasEnabled(env),
+  );
 
   // UI bubble display defaults (hot-updatable via ConfigStore)
   const bubbleThinking = (configStore.get('ui.bubble.thinking') ?? env.UI_BUBBLE_THINKING_DEFAULT ?? 'collapsed') as
@@ -138,6 +142,7 @@ export function collectConfigSnapshot(): ConfigSnapshot {
       model: codexExecutionModel,
       authMode: codexExecutionAuthMode,
       passModelArg: codexExecutionPassModelArg,
+      distinctPersonas: codexExecutionDistinctPersonas,
     },
     ui: {
       bubbleDefaults: {

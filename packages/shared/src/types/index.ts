@@ -92,6 +92,9 @@ export type {
 export type {
   CatColor,
   CatConfig,
+  CodexIdentityIsolation,
+  CodexPersonaConfig,
+  CodexPersonaMode,
   CatProvider,
   CatState,
   CatStatus,
@@ -99,6 +102,8 @@ export type {
 export {
   CAT_CONFIGS,
   findCatByMention,
+  getDefaultCodexIdentityIsolation,
+  getDefaultCodexPersonaMode,
   getAllCatIds,
 } from './cat.js';
 // Cat breed/variant types (Breed+Variant two-layer schema)

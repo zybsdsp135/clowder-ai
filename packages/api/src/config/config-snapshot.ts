@@ -80,6 +80,7 @@ export interface ConfigSnapshot {
     model: string;
     authMode: CodexAuthMode;
     passModelArg: boolean;
+    distinctPersonas: boolean;
   };
   /** F102 evidence/summary feature flags (Phase G) */
   f102: {

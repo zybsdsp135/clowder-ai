@@ -54,6 +54,11 @@ const contextBudgetSchema = z.object({
 const mentionPatternSchema = z.string().min(2).regex(/^@/, 'mentionPattern must start with @');
 
 const colorSchema = z.object({ primary: z.string(), secondary: z.string() });
+const codexPersonaSchema = z.object({
+  personaMode: z.enum(['off', 'balanced', 'strong']).optional(),
+  identityIsolation: z.enum(['inherit-repo', 'neutral-root']).optional(),
+  personaPrompt: z.string().trim().min(1).optional(),
+});
 
 const catVariantSchema = z.object({
   id: z.string().min(1),
@@ -75,6 +80,7 @@ const catVariantSchema = z.object({
     .min(1, 'ocProviderName must not be blank')
     .refine((v) => !v.includes('/'), 'ocProviderName must not contain "/"')
     .optional(), // F189: opencode custom provider name (e.g. "maas")
+  codex: codexPersonaSchema.optional(),
   roleDescription: z.string().min(1).optional(), // F127 review fix: allow variant-scoped roleDescription override
   sessionChain: z.boolean().optional(), // F127 review fix: allow variant-scoped sessionChain override
   personality: z.string().optional(),
@@ -440,6 +446,7 @@ export function toAllCatConfigs(config: CatCafeConfig): Record<string, CatConfig
           ? { cliConfigArgs: [...variant.cliConfigArgs] }
           : {}),
         ...(variant.ocProviderName != null ? { ocProviderName: variant.ocProviderName } : {}),
+        ...(variant.codex != null ? { codex: variant.codex } : {}),
         ...(variant.contextBudget != null ? { contextBudget: variant.contextBudget } : {}),
         roleDescription: variant.roleDescription ?? breed.roleDescription,
         personality: variant.personality ?? defaultVariant?.personality ?? '',
